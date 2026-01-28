@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 # =========================================================
 # CONFIGURATION
 # =========================================================
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 if not TELEGRAM_BOT_TOKEN:
     logger.error("❌ TELEGRAM_BOT_TOKEN not set")
     exit(1)
