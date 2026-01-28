@@ -17,6 +17,7 @@ from telegram.ext import (
 )
 from database import Database
 from knowledge_base import KnowledgeBase
+from health_server import run_health_server_background
 
 # Configure logging
 logging.basicConfig(
@@ -905,6 +906,10 @@ def main():
     logger.info(f"✅ Categories: {len(eva.kb.get_categories())}")
     logger.info("=" * 60)
     
+    # Start health check server for Render (prevents spin-down)
+    run_health_server_background(port=10000)
+    logger.info("🏥 Health server started on port 10000")
+    
     app = Application.builder() \
         .token(TELEGRAM_BOT_TOKEN) \
         .connect_timeout(15) \
@@ -965,4 +970,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-        
