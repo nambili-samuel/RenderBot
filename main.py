@@ -708,12 +708,25 @@ async def main():
     logger.info(f"🏥 Health server started on port {PORT}")
     
     # Build application
-    app = Application.builder() \
-        .token(TELEGRAM_BOT_TOKEN) \
-        .connect_timeout(15) \
-        .read_timeout(10) \
-        .write_timeout(10) \
-        .build()
+    try:
+        # Try to build with job queue support
+        from telegram.ext import JobQueue
+        app = Application.builder() \
+            .token(TELEGRAM_BOT_TOKEN) \
+            .connect_timeout(15) \
+            .read_timeout(10) \
+            .write_timeout(10) \
+            .build()
+        has_job_queue = True
+    except ImportError:
+        logger.warning("⚠️ JobQueue not available - install python-telegram-bot[job-queue] for scheduled features")
+        app = Application.builder() \
+            .token(TELEGRAM_BOT_TOKEN) \
+            .connect_timeout(15) \
+            .read_timeout(10) \
+            .write_timeout(10) \
+            .build()
+        has_job_queue = False
     
     # Add handlers
     app.add_handler(CommandHandler('start', start))
@@ -728,26 +741,29 @@ async def main():
     app.add_handler(MessageHandler(filters.TEXT & filters.ChatType.GROUPS, handle_group_message))
     app.add_handler(MessageHandler(filters.TEXT & filters.ChatType.PRIVATE, handle_private_message))
     
-    # Schedule daily property posts (at 10 AM every day)
-    job_queue = app.job_queue
-    job_queue.run_daily(
-        post_daily_property,
-        time=datetime.strptime("10:00", "%H:%M").time(),
-        name="daily_property_post"
-    )
-    
-    # Schedule periodic greetings (every 2 hours)
-    job_queue.run_repeating(
-        send_periodic_greetings,
-        interval=7200,  # 2 hours in seconds
-        first=300,  # Start after 5 minutes
-        name="periodic_greetings"
-    )
+    # Schedule jobs if job queue is available
+    if has_job_queue and app.job_queue:
+        # Schedule daily property posts (at 10 AM every day)
+        app.job_queue.run_daily(
+            post_daily_property,
+            time=datetime.strptime("10:00", "%H:%M").time(),
+            name="daily_property_post"
+        )
+        
+        # Schedule periodic greetings (every 2 hours)
+        app.job_queue.run_repeating(
+            send_periodic_greetings,
+            interval=7200,  # 2 hours in seconds
+            first=300,  # Start after 5 minutes
+            name="periodic_greetings"
+        )
+        logger.info("📅 Daily property posts at 10:00 AM")
+        logger.info("👋 Periodic greetings every 2 hours")
+    else:
+        logger.warning("⚠️ Scheduled jobs disabled - JobQueue not available")
     
     logger.info("🚀 Eva is running with webhook mode...")
     logger.info(f"🔗 Webhook URL: {WEBHOOK_URL}")
-    logger.info("📅 Daily property posts at 10:00 AM")
-    logger.info("👋 Periodic greetings every 2 hours")
     
     # Set webhook
     await app.bot.set_webhook(
