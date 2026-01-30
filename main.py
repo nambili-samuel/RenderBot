@@ -694,7 +694,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # =========================================================
 # MAIN
 # =========================================================
-async def main():
+def main():
     """Run Eva with webhook"""
     logger.info("=" * 60)
     logger.info("🇳🇦 EVA GEISES - NAMIBIA EXPERT & REAL ESTATE AGENT")
@@ -765,19 +765,14 @@ async def main():
     logger.info("🚀 Eva is running with webhook mode...")
     logger.info(f"🔗 Webhook URL: {WEBHOOK_URL}")
     
-    # Set webhook
-    await app.bot.set_webhook(
-        url=WEBHOOK_URL,
-        drop_pending_updates=True
-    )
-    
-    # Run webhook on the same port as health server
-    await app.run_webhook(
+    # Run webhook - this manages its own event loop
+    app.run_webhook(
         listen="0.0.0.0",
         port=PORT,
         url_path="/webhook",
-        webhook_url=WEBHOOK_URL
+        webhook_url=WEBHOOK_URL,
+        drop_pending_updates=True
     )
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
