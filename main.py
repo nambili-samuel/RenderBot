@@ -703,9 +703,10 @@ def main():
     logger.info(f"✅ Categories: {len(eva.kb.get_categories())}")
     logger.info("=" * 60)
     
-    # Start health check server for Render (prevents spin-down)
-    run_health_server_background(port=PORT)
-    logger.info(f"🏥 Health server started on port {PORT}")
+    # Start health check server on a different port (Render's health checks)
+    # Webhook will use PORT (10000), health server uses 8080
+    run_health_server_background(port=8080)
+    logger.info("🏥 Health server started on port 8080")
     
     # Build application
     try:
