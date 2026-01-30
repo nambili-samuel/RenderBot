@@ -1,6 +1,5 @@
-python-telegram-bot[webhooks]==20.7
+python-telegram-bot[job-queue]==20.7
 python-dotenv==1.0.0
 requests==2.31.0
-rapidfuzz==3.5.2
-aiohttp
-pandas
+pandas==3.0.0
+aiohttp==3.13.3
