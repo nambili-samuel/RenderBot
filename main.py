@@ -18,6 +18,7 @@ from telegram.ext import (
 from database import Database
 from knowledge_base import KnowledgeBase
 from health_server import run_health_server_background
+from smart_features import SmartFeatures
 
 # Configure logging
 logging.basicConfig(
@@ -42,16 +43,18 @@ WEBHOOK_URL = "https://renderbot-x64y.onrender.com/webhook"
 PORT = int(os.environ.get("PORT", "10000"))
 
 # =========================================================
-# EVA GEISES - NAMIBIA BOT ENGINE WITH REAL ESTATE
+# EVA GEISES - NAMIBIA BOT ENGINE WITH FULL GROUP MANAGEMENT
 # =========================================================
 class EvaGeisesBot:
     def __init__(self):
         self.db = Database()
         self.kb = KnowledgeBase()
+        self.smart = SmartFeatures()
         self.last_activity = {}
         self.welcomed_users = set()
         self.last_greeting = {}
         self.last_property_post = {}
+        self.property_rotation_index = 0
         logger.info(f"🇳🇦 Eva Geises initialized with {len(self.kb.get_all_topics())} topics")
     
     def get_greeting(self):
@@ -150,40 +153,22 @@ class EvaGeisesBot:
     
     def get_periodic_greeting(self):
         """Get varied time-based greetings"""
-        hour = datetime.now().hour
+        return self.smart.get_time_based_greeting()
+    
+    def get_property_posts(self):
+        """Get all real estate properties"""
+        properties = self.kb.get_by_category("Real Estate")
+        return properties if properties else []
+    
+    def get_next_property(self):
+        """Get next property in rotation"""
+        properties = self.get_property_posts()
+        if not properties:
+            return None
         
-        if 5 <= hour < 8:
-            greetings = [
-                "🌅 *Rise and shine, Namibia lovers!*\n\nWhat's everyone up to today?\n\n📱 Check /menu for Namibia info!",
-                "☀️ *Early morning vibes!*\n\nAnyone planning a Namibia adventure?\n\n💡 Use /menu to explore!",
-                "🌄 *Good morning, everyone!*\n\nWhat aspect of Namibia interests you most?\n\n📚 Try /menu!"
-            ]
-        elif 8 <= hour < 12:
-            greetings = [
-                "☕ *Good morning, Namibia enthusiasts!*\n\nWhat brings you here today?\n\n📱 Use /menu to discover!",
-                "🌞 *Morning everyone!*\n\nReady to learn something amazing about Namibia?\n\n💡 Check /menu!",
-                "👋 *Good morning!*\n\nAsk me anything about Namibia or use /menu! 🇳🇦"
-            ]
-        elif 12 <= hour < 17:
-            greetings = [
-                "🌤️ *Good afternoon, everyone!*\n\nWhat Namibia topic shall we explore?\n\n📱 Use /menu!",
-                "☀️ *Afternoon vibes!*\n\nAnyone curious about Namibia wildlife?\n\n🦁 Try /menu → Wildlife!",
-                "👋 *Good afternoon!*\n\nI'm here to answer Namibia questions! 🇳🇦\n\n💡 /menu for topics!"
-            ]
-        elif 17 <= hour < 21:
-            greetings = [
-                "🌆 *Good evening, Namibia fans!*\n\nHow's everyone doing?\n\n📱 Use /menu to explore!",
-                "🌅 *Evening everyone!*\n\nPerfect time to learn about Namibia!\n\n💡 Check /menu!",
-                "👋 *Good evening!*\n\nReady for some Namibia facts? 🇳🇦\n\n📚 Try /menu!"
-            ]
-        else:
-            greetings = [
-                "🌙 *Good evening, night owls!*\n\nWhat Namibia topic interests you?\n\n📱 Use /menu!",
-                "✨ *Hello everyone!*\n\nI'm here if you need Namibia info! 🇳🇦\n\n💡 Try /menu!",
-                "🌟 *Evening, travelers!*\n\nAsk me about Namibia anytime!\n\n📚 Use /menu!"
-            ]
-        
-        return random.choice(greetings)
+        property = properties[self.property_rotation_index % len(properties)]
+        self.property_rotation_index += 1
+        return property
     
     def generate_response(self, message, response_type):
         """Generate Eva's response"""
@@ -198,364 +183,376 @@ class EvaGeisesBot:
                 best = results[0]
                 
                 response = f"🤔 *Based on your question:*\n\n"
-                response += f"**{best['topic']}**\n"
+                response += f"📌 *{best['topic']}*\n\n"
                 response += f"{best['content']}\n\n"
                 
-                # Add related topics
                 if len(results) > 1:
-                    response += "📚 *Related topics:*\n"
-                    for i, res in enumerate(results[1:3], 1):
-                        response += f"{i}. {res['topic']}\n"
+                    response += "💡 *Related topics:*\n"
+                    for i, r in enumerate(results[1:], 1):
+                        response += f"{i}. {r['topic']}\n"
                     response += "\n"
                 
-                response += "💡 Ask me more or use /menu to explore!"
+                response += "ℹ️ Use /menu for more organized topics!"
                 return response
             else:
-                return f"🤔 *Interesting question about:* \"{clean_msg}\"\n\nI don't have info on that yet, but I'm learning! 📚\n\nMeanwhile, explore /menu to see what I know! 🇳🇦"
+                return (
+                    "🤔 I don't have specific information about that yet.\n\n"
+                    "💡 Try:\n"
+                    "• /menu - Browse all topics\n"
+                    "• /properties - View real estate listings\n"
+                    "• Ask about Namibia tourism, wildlife, or culture!"
+                )
         
-        # Greeting response
         elif response_type == "greeting":
             greeting = self.get_greeting()
-            responses = [
-                f"{greeting}! 👋 I'm Eva, your Namibia guide! 🇳🇦\n\nWhat interests you? Tourism? Wildlife? Real Estate?\n\nUse /menu to explore! 📱",
-                f"{greeting}! 🌟 Ready to discover Namibia?\n\nI can help with:\n• Tourism & Safari\n• Wildlife & Nature\n• Real Estate Opportunities\n• Culture & History\n\nJust ask or use /menu! 🗺️",
-                f"{greeting}! ✨ I'm Eva, here to share Namibia's wonders!\n\nAsk anything or browse /menu for topics! 🦁"
-            ]
-            return random.choice(responses)
+            return (
+                f"{greeting}! 👋\n\n"
+                f"I'm Eva Geises, your Namibia expert! 🇳🇦\n\n"
+                f"Ask me about tourism, wildlife, culture, or check out our real estate listings!\n\n"
+                f"💡 Quick start: /menu"
+            )
         
-        # Conversation starter
         elif response_type == "conversation_starter":
-            starters = [
-                "🌅 *Did you know?*\n\nNamibia has one of the oldest deserts in the world - the Namib Desert!\n\nWhat would you like to learn about Namibia? Use /menu! 🏜️",
-                "🦒 *Fascinating fact!*\n\nEtosha National Park hosts over 100 mammal species!\n\nCurious about Namibia wildlife? Check /menu! 🦁",
-                "🏠 *Real Estate Highlight*\n\nNamibia offers great property investment opportunities!\n\nInterested? Use /properties or /menu! 🏘️",
-                "🌍 *Travel Tip*\n\nNamibia is known for its stunning landscapes and friendly people!\n\nPlan your visit - explore /menu for info! ✈️"
-            ]
-            return random.choice(starters)
+            return self.smart.get_engagement_prompt()
         
         return None
 
-# Initialize Eva instance
+# Initialize bot
 eva = EvaGeisesBot()
 
-# Menu manager
-class MenuManager:
-    def __init__(self):
-        self.categories = eva.kb.get_categories()
+# =========================================================
+# MENU SYSTEM
+# =========================================================
+class MenuSystem:
+    def __init__(self, kb):
+        self.kb = kb
     
     def main_menu(self):
-        """Create main menu"""
-        keyboard = []
-        
-        # Category buttons (2 per row)
-        row = []
-        emoji_map = {
-            "Real Estate": "🏠", "Tourism": "🏞️", "History": "📜",
-            "Culture": "👥", "Practical": "ℹ️", "Wildlife": "🦁",
-            "Facts": "🚀", "Geography": "🗺️"
-        }
-        
-        for cat in self.categories:
-            emoji = emoji_map.get(cat, "📌")
-            row.append(InlineKeyboardButton(f"{emoji} {cat}", callback_data=f"cat_{cat}"))
-            if len(row) == 2:
-                keyboard.append(row)
-                row = []
-        
-        if row:
-            keyboard.append(row)
-        
-        # Add Properties button
-        keyboard.append([InlineKeyboardButton("🏘️ View Properties", callback_data="cat_Real Estate")])
-        
+        """Create main menu with categories"""
+        keyboard = [
+            [InlineKeyboardButton("🏠 Real Estate", callback_data="cat_Real Estate")],
+            [InlineKeyboardButton("🏞️ Tourism", callback_data="cat_Tourism")],
+            [InlineKeyboardButton("🦁 Wildlife", callback_data="cat_Wildlife")],
+            [InlineKeyboardButton("👥 Culture", callback_data="cat_Culture")],
+            [InlineKeyboardButton("📜 History", callback_data="cat_History")],
+            [InlineKeyboardButton("🗺️ Geography", callback_data="cat_Geography")],
+            [InlineKeyboardButton("ℹ️ Practical Info", callback_data="cat_Practical")],
+            [InlineKeyboardButton("🚀 Fun Facts", callback_data="cat_Facts")]
+        ]
         return InlineKeyboardMarkup(keyboard)
     
     def create_submenu(self, category):
         """Create submenu with topics"""
-        topics = eva.kb.get_by_category(category)
+        topics = self.kb.get_by_category(category)
         keyboard = []
         
-        # Add topic buttons (1 per row for readability)
-        for i, topic in enumerate(topics[:10]):  # Show first 10 topics
+        for i, topic in enumerate(topics[:8]):
             topic_name = topic['topic']
-            # Truncate long names
-            if len(topic_name) > 40:
-                topic_name = topic_name[:37] + "..."
-            
-            keyboard.append([
-                InlineKeyboardButton(
-                    topic_name,
-                    callback_data=f"topic_{category}_{i}"
-                )
-            ])
+            if len(topic_name) > 35:
+                topic_name = topic_name[:32] + "..."
+            keyboard.append([InlineKeyboardButton(
+                topic_name, 
+                callback_data=f"topic_{category}_{i}"
+            )])
         
-        # Back button
-        keyboard.append([InlineKeyboardButton("⬅️ Back to Menu", callback_data="menu_back")])
-        
+        keyboard.append([InlineKeyboardButton("🔙 Back to Menu", callback_data="menu_back")])
         return InlineKeyboardMarkup(keyboard)
     
     def back_button(self, category=None):
         """Create back button"""
-        keyboard = []
         if category:
-            keyboard.append([InlineKeyboardButton(f"⬅️ Back to {category}", callback_data=f"cat_{category}")])
-        keyboard.append([InlineKeyboardButton("🏠 Main Menu", callback_data="menu_back")])
+            keyboard = [[InlineKeyboardButton("🔙 Back", callback_data=f"cat_{category}")]]
+        else:
+            keyboard = [[InlineKeyboardButton("🔙 Main Menu", callback_data="menu_back")]]
         return InlineKeyboardMarkup(keyboard)
     
     def format_category(self, category):
         """Format category overview"""
-        topics = eva.kb.get_by_category(category)
+        topics = self.kb.get_by_category(category)
         
         emoji_map = {
-            "Real Estate": "🏠", "Tourism": "🏞️", "History": "📜",
-            "Culture": "👥", "Practical": "ℹ️", "Wildlife": "🦁",
-            "Facts": "🚀", "Geography": "🗺️"
+            "Real Estate": "🏠",
+            "Tourism": "🏞️",
+            "History": "📜",
+            "Culture": "👥",
+            "Practical": "ℹ️",
+            "Wildlife": "🦁",
+            "Facts": "🚀",
+            "Geography": "🗺️"
         }
         
         emoji = emoji_map.get(category, "📌")
         
         response = f"{emoji} *{category}*\n\n"
-        response += f"I have {len(topics)} topics in this category.\n\n"
-        response += "Select a topic below to learn more! 👇"
+        response += f"📚 {len(topics)} topics available\n\n"
+        response += "Select a topic below to learn more:"
         
         return response
 
-menu = MenuManager()
+menu = MenuSystem(eva.kb)
 
 # =========================================================
 # COMMAND HANDLERS
 # =========================================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Start command"""
+    """Welcome message"""
     user = update.effective_user
-    chat = update.effective_chat
+    chat_type = update.effective_chat.type
     
+    # Track user
     eva.db.add_user(user.id, user.username, user.first_name)
-    eva.db.add_chat(chat.id, chat.type, chat.title)
     
-    welcome = f"🇳🇦 *Welcome to Eva Geises - Your Namibia Expert!*\n\n"
-    welcome += f"Hello {user.first_name}! I'm Eva, and I can help you with:\n\n"
-    welcome += "🏞️ Tourism & Safari Adventures\n"
-    welcome += "🦁 Wildlife & Nature\n"
-    welcome += "🏠 Real Estate Opportunities\n"
-    welcome += "👥 Culture & History\n"
-    welcome += "ℹ️ Practical Travel Info\n\n"
-    welcome += "*Commands:*\n"
-    welcome += "/menu - Browse all topics\n"
-    welcome += "/properties - View real estate\n"
-    welcome += "/topics - Quick topic search\n"
-    welcome += "/help - Get help\n\n"
-    welcome += "💬 Just ask me anything about Namibia!"
+    if chat_type == "private":
+        welcome = (
+            f"🇳🇦 *Welcome {user.first_name}!*\n\n"
+            f"I'm *Eva Geises*, your AI guide to Namibia!\n\n"
+            f"🦁 *What I can help with:*\n"
+            f"• Tourism & Safari information\n"
+            f"• Wildlife & Nature\n"
+            f"• Culture & History\n"
+            f"• Real Estate listings\n"
+            f"• Practical travel info\n\n"
+            f"💡 *Quick Start:*\n"
+            f"/menu - Browse all topics\n"
+            f"/properties - View real estate\n"
+            f"/help - Get help\n\n"
+            f"Just ask me anything about Namibia! 🌟"
+        )
+    else:
+        # Track group chat
+        eva.db.track_chat(update.effective_chat.id, chat_type, update.effective_chat.title)
+        welcome = (
+            f"🇳🇦 *Hello everyone!*\n\n"
+            f"I'm Eva Geises, ready to help with Namibia questions!\n\n"
+            f"💡 Use /menu or just ask me anything!"
+        )
     
     await update.message.reply_text(welcome, parse_mode="Markdown")
 
 async def menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Menu command"""
+    """Show main menu"""
     await update.message.reply_text(
-        "🇳🇦 *I am here to help learn Namibia*\n\nWhat would you like to explore?",
+        "🇳🇦 *Explore Namibia*\n\nWhat would you like to learn about?",
         parse_mode="Markdown",
         reply_markup=menu.main_menu()
     )
 
 async def properties_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Properties command"""
-    properties = eva.kb.get_by_category("Real Estate")
+    """Show real estate properties"""
+    properties = eva.get_property_posts()
     
     if not properties:
-        await update.message.reply_text("🏠 No properties available at the moment.")
+        await update.message.reply_text(
+            "🏠 No properties currently listed.\n\nCheck back soon!"
+        )
         return
     
     response = "🏠 *Available Properties in Namibia*\n\n"
     
-    for i, prop in enumerate(properties[:5], 1):
+    for i, prop in enumerate(properties, 1):
         response += f"*{i}. {prop['topic']}*\n"
-        response += f"{prop['content'][:200]}...\n\n"
+        response += f"{prop['content']}\n\n"
+        response += "─" * 30 + "\n\n"
     
-    response += "💡 Use /menu → Real Estate for full details!"
+    response += "💡 For more information, contact the agent listed in each property!"
     
     await update.message.reply_text(response, parse_mode="Markdown")
 
 async def topics_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Topics command"""
+    """Show all topics by category"""
     categories = eva.kb.get_categories()
     
-    response = "📚 *Available Topics*\n\n"
+    response = "📚 *All Topics by Category*\n\n"
     
-    emoji_map = {
-        "Real Estate": "🏠", "Tourism": "🏞️", "History": "📜",
-        "Culture": "👥", "Practical": "ℹ️", "Wildlife": "🦁",
-        "Facts": "🚀", "Geography": "🗺️"
-    }
+    for category in sorted(categories):
+        topics = eva.kb.get_by_category(category)
+        response += f"*{category}* ({len(topics)})\n"
+        for topic in topics[:3]:
+            response += f"  • {topic['topic']}\n"
+        if len(topics) > 3:
+            response += f"  ... and {len(topics) - 3} more\n"
+        response += "\n"
     
-    for cat in categories:
-        topics = eva.kb.get_by_category(cat)
-        emoji = emoji_map.get(cat, "📌")
-        response += f"{emoji} *{cat}:* {len(topics)} topics\n"
-    
-    response += "\n💡 Use /menu to explore topics!"
+    response += "💡 Use /menu to explore topics interactively!"
     
     await update.message.reply_text(response, parse_mode="Markdown")
 
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Stats command (admin only)"""
-    user_id = update.effective_user.id
-    
-    if user_id not in ADMIN_IDS:
-        await update.message.reply_text("⛔ Admin only command")
+    """Show bot statistics - Admin only"""
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("🔒 This command is only available to administrators.")
         return
     
-    stats = eva.db.get_stats()
+    user_stats = eva.db.get_user_stats(update.effective_user.id)
+    total_users = len(eva.db.get_all_users())
+    total_queries = eva.db.get_total_queries()
+    active_chats = eva.db.get_active_chats()
     
-    response = "📊 *Bot Statistics*\n\n"
-    response += f"👥 Total Users: {stats['total_users']}\n"
-    response += f"💬 Total Chats: {stats['total_chats']}\n"
-    response += f"✅ Active Chats: {stats['active_chats']}\n"
-    response += f"📚 Topics: {len(eva.kb.get_all_topics())}\n"
-    response += f"📂 Categories: {len(eva.kb.get_categories())}\n"
+    response = f"📊 *Bot Statistics*\n\n"
+    response += f"👥 Total Users: {total_users}\n"
+    response += f"💬 Total Queries: {total_queries}\n"
+    response += f"🏘️ Active Groups: {len(active_chats)}\n"
+    response += f"📚 Knowledge Topics: {len(eva.kb.get_all_topics())}\n\n"
+    response += f"*Your Stats:*\n"
+    response += f"Queries: {user_stats['query_count']}\n"
+    response += f"Member since: {user_stats['joined_date'][:10] if user_stats['joined_date'] else 'Unknown'}"
     
     await update.message.reply_text(response, parse_mode="Markdown")
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Help command"""
-    help_text = "🇳🇦 *Eva Geises - Help*\n\n"
-    help_text += "*Commands:*\n"
-    help_text += "/start - Start the bot\n"
-    help_text += "/menu - Browse all topics\n"
-    help_text += "/properties - View real estate listings\n"
-    help_text += "/topics - See available topics\n"
-    help_text += "/help - Show this help\n\n"
-    help_text += "*How to use:*\n"
-    help_text += "• Just ask me questions about Namibia!\n"
-    help_text += "• Use /menu to browse topics\n"
-    help_text += "• Mention 'Eva' or 'bot' in groups\n\n"
-    help_text += "💬 I respond to questions, greetings, and Namibia-related keywords!"
+    """Show help"""
+    help_text = (
+        "🇳🇦 *Eva Geises - Help Guide*\n\n"
+        "*Commands:*\n"
+        "/menu - Browse topics by category\n"
+        "/properties - View real estate listings\n"
+        "/topics - List all topics\n"
+        "/help - Show this help\n\n"
+        "*How to use:*\n"
+        "• Ask questions naturally\n"
+        "• Mention topics like 'Etosha', 'Sossusvlei'\n"
+        "• Use /menu for organized browsing\n\n"
+        "*Examples:*\n"
+        "• \"What is the best time to visit Namibia?\"\n"
+        "• \"Tell me about Etosha\"\n"
+        "• \"Show me available properties\"\n\n"
+        "Need more help? Just ask! 😊"
+    )
     
     await update.message.reply_text(help_text, parse_mode="Markdown")
 
 async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Add topic command (admin only)"""
-    user_id = update.effective_user.id
-    
-    if user_id not in ADMIN_IDS:
-        await update.message.reply_text("⛔ Admin only command")
+    """Add knowledge - Admin only"""
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("🔒 This command is only available to administrators.")
         return
     
     if len(context.args) < 3:
         await update.message.reply_text(
             "Usage: /add <category> <topic> <content>\n\n"
-            "Example: /add Tourism \"Cape Cross\" \"Visit the seal colony...\""
+            "Example:\n/add Tourism \"Skeleton Coast\" \"The Skeleton Coast is...\""
         )
         return
     
     category = context.args[0]
     topic = context.args[1]
-    content = " ".join(context.args[2:])
+    content = ' '.join(context.args[2:])
     
-    eva.kb.add_topic(category, topic, content)
+    eva.kb.add_knowledge(topic, content, category)
     
-    await update.message.reply_text(f"✅ Added topic '{topic}' to {category}")
+    await update.message.reply_text(
+        f"✅ Added '{topic}' to {category} category!"
+    )
 
 # =========================================================
 # MESSAGE HANDLERS
 # =========================================================
 async def handle_new_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle new members"""
-    chat = update.effective_chat
-    new_members = update.message.new_chat_members
-    
-    eva.db.add_chat(chat.id, chat.type, chat.title)
-    
-    for member in new_members:
-        if member.id == context.bot.id:
-            welcome = "🇳🇦 *Hello everyone! I'm Eva Geises!*\n\n"
-            welcome += "I'm here to share knowledge about Namibia:\n\n"
-            welcome += "🏞️ Tourism & Wildlife\n"
-            welcome += "🏠 Real Estate\n"
-            welcome += "👥 Culture & History\n"
-            welcome += "ℹ️ Travel Information\n\n"
-            welcome += "*How to use me:*\n"
-            welcome += "• Ask questions about Namibia\n"
-            welcome += "• Mention 'Eva' or 'bot'\n"
-            welcome += "• Use /menu to browse topics\n\n"
-            welcome += "💬 I'll respond to relevant messages automatically!"
-            
-            await update.message.reply_text(welcome, parse_mode="Markdown")
-            break
+    """Welcome new group members"""
+    for member in update.message.new_chat_members:
+        if member.is_bot:
+            continue
+        
+        # Track chat
+        eva.db.track_chat(
+            update.effective_chat.id,
+            update.effective_chat.type,
+            update.effective_chat.title
+        )
+        
+        # Track user
+        eva.db.add_user(member.id, member.username, member.first_name)
+        
+        # Send varied welcome
+        name = member.first_name or member.username or "friend"
+        welcome = eva.smart.get_varied_welcome(name)
+        
+        await update.message.reply_text(welcome, parse_mode="Markdown")
 
 async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle group messages"""
-    message = update.message
+    if not update.message or not update.message.text:
+        return
+    
     user = update.effective_user
     chat = update.effective_chat
+    message = update.message.text
     
+    # Track chat activity
+    eva.db.track_chat(chat.id, chat.type, chat.title)
     eva.db.add_user(user.id, user.username, user.first_name)
-    eva.db.add_chat(chat.id, chat.type, chat.title)
     
-    # Analyze message
-    should_respond, response_type = eva.analyze_message(message.text, user.id, chat.id)
+    # Check for spam
+    is_spam, warning_level = eva.smart.check_spam(user.id, chat.id)
+    if is_spam and warning_level > 0:
+        warning_msg = eva.smart.get_spam_warning(warning_level, user.first_name or "friend")
+        await update.message.reply_text(warning_msg, parse_mode="Markdown")
+        return
+    
+    # Analyze if Eva should respond
+    should_respond, response_type = eva.analyze_message(message, user.id, chat.id)
     
     if should_respond:
-        response = eva.generate_response(message.text, response_type)
+        eva.db.log_query(user.id, message)
+        response = eva.generate_response(message, response_type)
+        
         if response:
-            await message.reply_text(response, parse_mode="Markdown")
+            await update.message.reply_text(response, parse_mode="Markdown")
 
 async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle private messages"""
-    message = update.message
-    user = update.effective_user
+    if not update.message or not update.message.text:
+        return
     
+    user = update.effective_user
+    message = update.message.text
+    
+    # Track user
     eva.db.add_user(user.id, user.username, user.first_name)
+    eva.db.log_query(user.id, message)
     
     # Always respond in private chats
-    should_respond, response_type = eva.analyze_message(message.text, user.id, user.id)
+    should_respond, response_type = eva.analyze_message(message, user.id, update.effective_chat.id)
     
     if not should_respond:
         response_type = "search"
     
-    response = eva.generate_response(message.text, response_type)
+    response = eva.generate_response(message, response_type)
+    
     if response:
-        await message.reply_text(response, parse_mode="Markdown")
+        await update.message.reply_text(response, parse_mode="Markdown")
     else:
-        await message.reply_text(
-            "🤔 I'm not sure about that.\n\nTry /menu to explore topics or ask something else! 🇳🇦",
+        await update.message.reply_text(
+            "🤔 I'm not sure about that. Try /menu to explore topics or /help for guidance!",
             parse_mode="Markdown"
         )
 
 # =========================================================
-# SCHEDULED JOBS
+# AUTOMATED JOBS
 # =========================================================
 async def post_daily_property(context: ContextTypes.DEFAULT_TYPE):
-    """Post daily property to all active chats"""
+    """Post daily property to groups"""
     try:
         logger.info("🏠 Starting daily property post...")
-        properties = eva.kb.get_by_category("Real Estate")
+        property_data = eva.get_next_property()
         
-        if not properties:
+        if not property_data:
             logger.info("📭 No properties available")
             return
         
-        # Select random property
-        property_data = random.choice(properties)
-        
-        # Format message
-        message = "🏠 *Today's Featured Property*\n\n"
-        message += f"**{property_data['topic']}**\n\n"
-        message += f"{property_data['content']}\n\n"
-        message += "💡 Interested? Contact us or use /properties for more listings!"
-        
-        # Send to all active chats
         active_chats = eva.db.get_active_chats()
+        
+        if not active_chats:
+            logger.info("📭 No active chats for property posts")
+            return
+        
+        message = f"🏠 *Featured Property*\n\n"
+        message += f"*{property_data['topic']}*\n\n"
+        message += f"{property_data['content']}\n\n"
+        message += "💡 Use /properties to see all available listings!"
         
         for chat in active_chats:
             chat_id = chat['chat_id']
-            
-            # Check if already posted today
-            chat_id_str = str(chat_id)
-            today = datetime.now().date()
-            
-            if chat_id_str in eva.last_property_post:
-                if eva.last_property_post[chat_id_str].date() == today:
-                    continue
             
             try:
                 await context.bot.send_message(
@@ -563,19 +560,20 @@ async def post_daily_property(context: ContextTypes.DEFAULT_TYPE):
                     text=message,
                     parse_mode="Markdown"
                 )
-                eva.last_property_post[chat_id_str] = datetime.now()
                 logger.info(f"✅ Property posted to chat {chat_id}")
-                await asyncio.sleep(2)  # Avoid rate limiting
+                await asyncio.sleep(3)
             except Exception as e:
-                logger.error(f"❌ Failed to post to chat {chat_id}: {e}")
-                # Deactivate chat if bot was removed
+                logger.error(f"❌ Failed to post property to chat {chat_id}: {e}")
                 if "bot was blocked" in str(e).lower() or "chat not found" in str(e).lower():
                     eva.db.deactivate_chat(chat_id)
-                    logger.info(f"🔇 Deactivated chat {chat_id}")
         
-        logger.info("✅ Daily property posting complete")
+        logger.info("✅ Daily property post complete")
     except Exception as e:
         logger.error(f"❌ Error in daily property post: {e}")
+
+async def post_multiple_properties(context: ContextTypes.DEFAULT_TYPE):
+    """Post properties at different times (10 AM, 2 PM, 6 PM)"""
+    await post_daily_property(context)
 
 async def send_periodic_greetings(context: ContextTypes.DEFAULT_TYPE):
     """Send periodic greetings to active groups"""
@@ -601,10 +599,9 @@ async def send_periodic_greetings(context: ContextTypes.DEFAULT_TYPE):
                         parse_mode="Markdown"
                     )
                     logger.info(f"✅ Greeting sent to chat {chat_id}")
-                    await asyncio.sleep(2)  # Avoid rate limiting
+                    await asyncio.sleep(2)
                 except Exception as e:
                     logger.error(f"❌ Failed to send greeting to chat {chat_id}: {e}")
-                    # Deactivate chat if bot was removed
                     if "bot was blocked" in str(e).lower() or "chat not found" in str(e).lower():
                         eva.db.deactivate_chat(chat_id)
                         logger.info(f"🔇 Deactivated chat {chat_id}")
@@ -612,6 +609,38 @@ async def send_periodic_greetings(context: ContextTypes.DEFAULT_TYPE):
         logger.info("✅ Periodic greetings complete")
     except Exception as e:
         logger.error(f"❌ Error in periodic greetings: {e}")
+
+async def send_engagement_content(context: ContextTypes.DEFAULT_TYPE):
+    """Send engagement content (polls, questions, facts)"""
+    try:
+        logger.info("🎯 Starting engagement content...")
+        active_chats = eva.db.get_active_chats()
+        
+        if not active_chats:
+            logger.info("📭 No active chats for engagement")
+            return
+        
+        engagement = eva.smart.get_engagement_prompt()
+        
+        for chat in active_chats:
+            chat_id = chat['chat_id']
+            
+            try:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=engagement,
+                    parse_mode="Markdown"
+                )
+                logger.info(f"✅ Engagement sent to chat {chat_id}")
+                await asyncio.sleep(3)
+            except Exception as e:
+                logger.error(f"❌ Failed to send engagement to chat {chat_id}: {e}")
+                if "bot was blocked" in str(e).lower() or "chat not found" in str(e).lower():
+                    eva.db.deactivate_chat(chat_id)
+        
+        logger.info("✅ Engagement content complete")
+    except Exception as e:
+        logger.error(f"❌ Error in engagement content: {e}")
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle buttons"""
@@ -623,12 +652,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Main menu
     if data == "menu_back":
         await query.edit_message_text(
-            "🇳🇦 *I am here to help learn Namibia*\n\nWhat would you like to explore?",
+            "🇳🇦 *Explore Namibia*\n\nWhat would you like to learn about?",
             parse_mode="Markdown",
             reply_markup=menu.main_menu()
         )
     
-    # Category selection - show submenu with topic buttons
+    # Category selection
     elif data.startswith("cat_"):
         category = data.replace("cat_", "")
         content = menu.format_category(category)
@@ -639,12 +668,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=menu.create_submenu(category)
         )
     
-    # Topic selection - show detailed information
+    # Topic selection
     elif data.startswith("topic_"):
-        # Parse: topic_Category_index
         parts = data.split("_")
         if len(parts) >= 3:
-            category = "_".join(parts[1:-1])  # Handle "Real Estate" category
+            category = "_".join(parts[1:-1])
             try:
                 topic_index = int(parts[-1])
             except:
@@ -655,7 +683,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if topics and 0 <= topic_index < len(topics):
                 topic = topics[topic_index]
                 
-                # Format detailed topic response
                 emoji_map = {
                     "Real Estate": "🏠",
                     "Tourism": "🏞️", "History": "📜", "Culture": "👥",
@@ -668,7 +695,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 response = f"{emoji} *{topic['topic']}*\n\n"
                 response += f"{topic['content']}\n\n"
                 
-                # Add keywords if available
                 if topic.get('keywords'):
                     keywords = topic['keywords'].strip()
                     if keywords:
@@ -684,7 +710,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 return
         
-        # Fallback if topic not found
         await query.edit_message_text(
             "❌ Topic not found. Please try another topic.",
             parse_mode="Markdown",
@@ -697,20 +722,19 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     """Run Eva with webhook"""
     logger.info("=" * 60)
-    logger.info("🇳🇦 EVA GEISES - NAMIBIA EXPERT & REAL ESTATE AGENT")
+    logger.info("🇳🇦 EVA GEISES - FULL GROUP MANAGEMENT BOT")
     logger.info("=" * 60)
     logger.info(f"✅ Topics: {len(eva.kb.get_all_topics())}")
     logger.info(f"✅ Categories: {len(eva.kb.get_categories())}")
+    logger.info(f"✅ Properties: {len(eva.get_property_posts())}")
     logger.info("=" * 60)
     
-    # Start health check server on a different port (Render's health checks)
-    # Webhook will use PORT (10000), health server uses 8080
+    # Start health check server
     run_health_server_background(port=8080)
     logger.info("🏥 Health server started on port 8080")
     
     # Build application
     try:
-        # Try to build with job queue support
         from telegram.ext import JobQueue
         app = Application.builder() \
             .token(TELEGRAM_BOT_TOKEN) \
@@ -720,7 +744,7 @@ def main():
             .build()
         has_job_queue = True
     except ImportError:
-        logger.warning("⚠️ JobQueue not available - install python-telegram-bot[job-queue] for scheduled features")
+        logger.warning("⚠️ JobQueue not available")
         app = Application.builder() \
             .token(TELEGRAM_BOT_TOKEN) \
             .connect_timeout(15) \
@@ -742,31 +766,50 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & filters.ChatType.GROUPS, handle_group_message))
     app.add_handler(MessageHandler(filters.TEXT & filters.ChatType.PRIVATE, handle_private_message))
     
-    # Schedule jobs if job queue is available
+    # Schedule jobs
     if has_job_queue and app.job_queue:
-        # Schedule daily property posts (at 10 AM every day)
+        # Property posts 3x daily: 10 AM, 2 PM, 6 PM
         app.job_queue.run_daily(
-            post_daily_property,
+            post_multiple_properties,
             time=datetime.strptime("10:00", "%H:%M").time(),
-            name="daily_property_post"
+            name="property_post_10am"
+        )
+        app.job_queue.run_daily(
+            post_multiple_properties,
+            time=datetime.strptime("14:00", "%H:%M").time(),
+            name="property_post_2pm"
+        )
+        app.job_queue.run_daily(
+            post_multiple_properties,
+            time=datetime.strptime("18:00", "%H:%M").time(),
+            name="property_post_6pm"
         )
         
-        # Schedule periodic greetings (every 2 hours)
+        # Periodic greetings every 2 hours
         app.job_queue.run_repeating(
             send_periodic_greetings,
-            interval=7200,  # 2 hours in seconds
-            first=300,  # Start after 5 minutes
+            interval=7200,
+            first=300,
             name="periodic_greetings"
         )
-        logger.info("📅 Daily property posts at 10:00 AM")
-        logger.info("👋 Periodic greetings every 2 hours")
+        
+        # Engagement content every 4 hours
+        app.job_queue.run_repeating(
+            send_engagement_content,
+            interval=14400,
+            first=1800,
+            name="engagement_content"
+        )
+        
+        logger.info("📅 Property posts: 10 AM, 2 PM, 6 PM daily")
+        logger.info("👋 Periodic greetings: Every 2 hours")
+        logger.info("🎯 Engagement content: Every 4 hours")
     else:
-        logger.warning("⚠️ Scheduled jobs disabled - JobQueue not available")
+        logger.warning("⚠️ Scheduled jobs disabled")
     
-    logger.info("🚀 Eva is running with webhook mode...")
+    logger.info("🚀 Eva is running with full group management...")
     logger.info(f"🔗 Webhook URL: {WEBHOOK_URL}")
     
-    # Run webhook - this manages its own event loop
     app.run_webhook(
         listen="0.0.0.0",
         port=PORT,
