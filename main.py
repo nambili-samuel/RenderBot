@@ -19,6 +19,7 @@ from database import Database
 from knowledge_base import KnowledgeBase
 from health_server import run_health_server_background
 from smart_features import SmartFeatures
+from advanced_ai import AdvancedAI
 
 # Configure logging
 logging.basicConfig(
@@ -50,12 +51,14 @@ class EvaGeisesBot:
         self.db = Database()
         self.kb = KnowledgeBase()
         self.smart = SmartFeatures()
+        self.ai = AdvancedAI()  # Advanced AI features
         self.last_activity = {}
         self.welcomed_users = set()
         self.last_greeting = {}
         self.last_property_post = {}
         self.property_rotation_index = 0
         logger.info(f"🇳🇦 Eva Geises initialized with {len(self.kb.get_all_topics())} topics")
+        logger.info("🤖 Advanced AI features loaded")
     
     def get_greeting(self):
         """Get time-appropriate greeting"""
@@ -446,20 +449,35 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show help"""
     help_text = (
-        "🇳🇦 *Eva Geises - Help Guide*\n\n"
-        "*Commands:*\n"
+        "🇳🇦 *Eva Geises - Advanced AI Assistant*\n\n"
+        "🎯 *Core Commands:*\n"
         "/menu - Browse topics by category\n"
         "/properties - View real estate listings\n"
         "/topics - List all topics\n"
         "/help - Show this help\n\n"
-        "*How to use:*\n"
+        "🤖 *AI Features:*\n"
+        "/weather - Live Namibia weather\n"
+        "/news - Latest Namibia news\n"
+        "/story - Hear a Namibia story\n"
+        "/brainstorm - Generate ideas\n"
+        "/poll - Create engaging poll\n"
+        "/discuss - Start discussion\n"
+        "/fact - Random Namibia fact\n\n"
+        "💬 *How to use:*\n"
         "• Ask questions naturally\n"
         "• Mention topics like 'Etosha', 'Sossusvlei'\n"
+        "• I respond to greetings!\n"
         "• Use /menu for organized browsing\n\n"
-        "*Examples:*\n"
-        "• \"What is the best time to visit Namibia?\"\n"
+        "✨ *Examples:*\n"
+        "• \"Where is Namibia?\"\n"
         "• \"Tell me about Etosha\"\n"
-        "• \"Show me available properties\"\n\n"
+        "• \"Show me properties\"\n"
+        "• \"/weather\" for live updates\n\n"
+        "🚀 *Automated Features:*\n"
+        "• Greetings every 2 hours\n"
+        "• Property posts 3x daily\n"
+        "• Stories, polls & discussions\n"
+        "• Weather & news updates\n\n"
         "Need more help? Just ask! 😊"
     )
     
@@ -487,6 +505,55 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"✅ Added '{topic}' to {category} category!"
     )
+
+async def weather_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Get Namibia weather"""
+    await update.message.reply_text("🌤️ Fetching live weather data...", parse_mode="Markdown")
+    weather = await eva.ai.get_namibia_weather()
+    await update.message.reply_text(weather, parse_mode="Markdown")
+
+async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Get Namibia news"""
+    await update.message.reply_text("📰 Searching for latest Namibia news...", parse_mode="Markdown")
+    news = await eva.ai.get_namibia_news()
+    await update.message.reply_text(news, parse_mode="Markdown")
+
+async def story_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Tell a Namibia story"""
+    story = eva.ai.tell_namibia_story()
+    await update.message.reply_text(story, parse_mode="Markdown")
+
+async def brainstorm_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Generate brainstorming ideas"""
+    topic = ' '.join(context.args) if context.args else "Namibia"
+    ideas = eva.ai.generate_brainstorm_ideas(topic)
+    await update.message.reply_text(ideas, parse_mode="Markdown")
+
+async def poll_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Create and send a poll"""
+    poll_data = eva.ai.generate_poll()
+    
+    try:
+        await context.bot.send_poll(
+            chat_id=update.effective_chat.id,
+            question=poll_data["question"],
+            options=poll_data["options"],
+            is_anonymous=False,
+            allows_multiple_answers=False
+        )
+    except Exception as e:
+        logger.error(f"Poll error: {e}")
+        await update.message.reply_text("❌ Sorry, couldn't create poll. This might be a private chat.")
+
+async def discuss_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Start a discussion topic"""
+    topic = eva.ai.generate_discussion_topic()
+    await update.message.reply_text(topic, parse_mode="Markdown")
+
+async def fact_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Share a random fact"""
+    fact = eva.ai.get_random_fact()
+    await update.message.reply_text(fact, parse_mode="Markdown")
 
 # =========================================================
 # MESSAGE HANDLERS
@@ -667,7 +734,7 @@ async def send_periodic_greetings(context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"❌ Error in periodic greetings: {e}")
 
 async def send_engagement_content(context: ContextTypes.DEFAULT_TYPE):
-    """Send engagement content (polls, questions, facts)"""
+    """Send engagement content (polls, questions, facts, stories, weather)"""
     try:
         logger.info("🎯 Starting engagement content...")
         active_chats = eva.db.get_active_chats()
@@ -676,19 +743,102 @@ async def send_engagement_content(context: ContextTypes.DEFAULT_TYPE):
             logger.info("📭 No active chats for engagement")
             return
         
-        engagement = eva.smart.get_engagement_prompt()
+        # Rotate between different engagement types
+        engagement_types = [
+            "poll", "discussion", "story", "fact", "weather", "news", "brainstorm"
+        ]
+        
+        hour = datetime.now().hour
+        
+        # Choose engagement type based on time of day
+        if 6 <= hour < 9:
+            # Morning: Weather + News
+            content_type = random.choice(["weather", "news", "fact"])
+        elif 12 <= hour < 14:
+            # Lunch: Discussion or Poll
+            content_type = random.choice(["poll", "discussion"])
+        elif 17 <= hour < 20:
+            # Evening: Story or Brainstorm
+            content_type = random.choice(["story", "brainstorm", "discussion"])
+        else:
+            # Other times: Mix
+            content_type = random.choice(engagement_types)
         
         for chat in active_chats:
             chat_id = chat['chat_id']
+            chat_id_str = str(chat_id)
             
             try:
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text=engagement,
-                    parse_mode="Markdown"
-                )
-                logger.info(f"✅ Engagement sent to chat {chat_id}")
-                await asyncio.sleep(3)
+                # Generate appropriate content
+                if content_type == "poll":
+                    if eva.ai.should_send_poll(chat_id_str):
+                        poll_data = eva.ai.generate_poll()
+                        await context.bot.send_poll(
+                            chat_id=chat_id,
+                            question=poll_data["question"],
+                            options=poll_data["options"],
+                            is_anonymous=False
+                        )
+                        logger.info(f"✅ Poll sent to chat {chat_id}")
+                
+                elif content_type == "story":
+                    if eva.ai.should_tell_story(chat_id_str):
+                        story = eva.ai.tell_namibia_story()
+                        await context.bot.send_message(
+                            chat_id=chat_id,
+                            text=story,
+                            parse_mode="Markdown"
+                        )
+                        logger.info(f"✅ Story sent to chat {chat_id}")
+                
+                elif content_type == "weather":
+                    if eva.ai.should_send_weather(chat_id_str):
+                        weather = await eva.ai.get_namibia_weather()
+                        await context.bot.send_message(
+                            chat_id=chat_id,
+                            text=weather,
+                            parse_mode="Markdown"
+                        )
+                        logger.info(f"✅ Weather sent to chat {chat_id}")
+                
+                elif content_type == "news":
+                    news = await eva.ai.get_namibia_news()
+                    await context.bot.send_message(
+                        chat_id=chat_id,
+                        text=news,
+                        parse_mode="Markdown"
+                    )
+                    logger.info(f"✅ News sent to chat {chat_id}")
+                
+                elif content_type == "brainstorm":
+                    ideas = eva.ai.generate_brainstorm_ideas()
+                    await context.bot.send_message(
+                        chat_id=chat_id,
+                        text=ideas,
+                        parse_mode="Markdown"
+                    )
+                    logger.info(f"✅ Brainstorm sent to chat {chat_id}")
+                
+                elif content_type == "discussion":
+                    topic = eva.ai.generate_discussion_topic()
+                    await context.bot.send_message(
+                        chat_id=chat_id,
+                        text=topic,
+                        parse_mode="Markdown"
+                    )
+                    logger.info(f"✅ Discussion sent to chat {chat_id}")
+                
+                elif content_type == "fact":
+                    fact = eva.ai.get_random_fact()
+                    await context.bot.send_message(
+                        chat_id=chat_id,
+                        text=fact,
+                        parse_mode="Markdown"
+                    )
+                    logger.info(f"✅ Fact sent to chat {chat_id}")
+                
+                await asyncio.sleep(3)  # Avoid rate limiting
+                
             except Exception as e:
                 logger.error(f"❌ Failed to send engagement to chat {chat_id}: {e}")
                 if "bot was blocked" in str(e).lower() or "chat not found" in str(e).lower():
@@ -817,6 +967,16 @@ def main():
     app.add_handler(CommandHandler('stats', stats_command))
     app.add_handler(CommandHandler('help', help_command))
     app.add_handler(CommandHandler('add', add_command))
+    
+    # Advanced AI Commands
+    app.add_handler(CommandHandler('weather', weather_command))
+    app.add_handler(CommandHandler('news', news_command))
+    app.add_handler(CommandHandler('story', story_command))
+    app.add_handler(CommandHandler('brainstorm', brainstorm_command))
+    app.add_handler(CommandHandler('poll', poll_command))
+    app.add_handler(CommandHandler('discuss', discuss_command))
+    app.add_handler(CommandHandler('fact', fact_command))
+    
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, handle_new_members))
     app.add_handler(MessageHandler(filters.TEXT & filters.ChatType.GROUPS, handle_group_message))
