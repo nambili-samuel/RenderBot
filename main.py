@@ -92,13 +92,18 @@ class EvaGeisesBot:
         if any(msg.startswith(w) for w in question_words):
             response_types.append(("search", 95))
         
-        # 4. Greetings - 80%
+        # 4. Greetings - 95% (IMPROVED - respond more often)
         greetings = ["hi", "hello", "hey", "good morning", "good afternoon", "good evening", 
-                    "moro", "greetings", "hallo", "howzit", "morning", "afternoon", "evening"]
+                    "moro", "greetings", "hallo", "howzit", "morning", "afternoon", "evening",
+                    "sup", "yo", "heya"]
         # Check if greeting is at start or is standalone
         msg_words = msg.split()
-        if any(g in msg_words[:2] for g in greetings):
-            response_types.append(("greeting", 80))
+        if len(msg_words) <= 3 and any(g in msg_words for g in greetings):
+            # Short message with greeting = definitely a greeting
+            response_types.append(("greeting", 95))
+        elif any(g in msg_words[:2] for g in greetings):
+            # Greeting in first 2 words
+            response_types.append(("greeting", 90))
         
         # 5. Namibia mentions - 90%
         if "namibia" in msg or "namibian" in msg or "namibians" in msg:
@@ -138,8 +143,8 @@ class EvaGeisesBot:
         if response_types:
             response_types.sort(key=lambda x: x[1], reverse=True)
             top = response_types[0]
-            # Always respond to high-priority triggers (90%+)
-            if top[1] >= 90 or random.random() < (top[1] / 100):
+            # Always respond to high-priority triggers (80%+) - INCLUDES GREETINGS
+            if top[1] >= 80 or random.random() < (top[1] / 100):
                 return True, top[0]
         
         return False, None
@@ -531,12 +536,24 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     # Analyze if Eva should respond
     should_respond, response_type = eva.analyze_message(message, user.id, chat.id)
     
-    if should_respond:
+    if should_respond and response_type:
+        logger.info(f"Eva responding: {message[:50]}... ({response_type})")
         eva.db.log_query(user.id, message)
         response = eva.generate_response(message, response_type)
         
         if response:
-            await update.message.reply_text(response, parse_mode="Markdown")
+            # Natural delay before responding
+            await asyncio.sleep(random.uniform(0.5, 1.5))
+            
+            try:
+                await update.message.reply_text(
+                    response,
+                    parse_mode="Markdown",
+                    reply_to_message_id=update.message.message_id
+                )
+                logger.info("✅ Response sent")
+            except Exception as e:
+                logger.error(f"❌ Error sending response: {e}")
 
 async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle private messages"""
