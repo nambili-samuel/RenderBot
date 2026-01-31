@@ -70,7 +70,7 @@ class EvaGeisesBot:
             return "Hello"
     
     def analyze_message(self, message, user_id, chat_id):
-        """Analyze if Eva should respond"""
+        """Analyze if Eva should respond - IMPROVED INTELLIGENCE"""
         msg = message.lower().strip()
         self.last_activity[str(chat_id)] = datetime.now()
         
@@ -81,50 +81,65 @@ class EvaGeisesBot:
         if any(mention in msg for mention in bot_mentions):
             response_types.append(("search", 100))
         
-        # 2. Questions - 90%
-        question_words = ["what", "how", "where", "when", "why", "who", "which", 
-                         "can you", "tell me", "explain", "show me", "is", "are", "do", "does"]
-        if "?" in msg or any(msg.startswith(w) for w in question_words):
-            response_types.append(("search", 90))
+        # 2. Questions with ? - 100% (FIXED - was not responding)
+        if "?" in msg:
+            response_types.append(("search", 100))
         
-        # 3. Greetings - 80%
+        # 3. Questions without ? - 95%
+        question_words = ["what", "how", "where", "when", "why", "who", "which", 
+                         "can you", "tell me", "explain", "show me", "is", "are", "do", "does",
+                         "could you", "would you", "should", "will", "give me"]
+        if any(msg.startswith(w) for w in question_words):
+            response_types.append(("search", 95))
+        
+        # 4. Greetings - 80%
         greetings = ["hi", "hello", "hey", "good morning", "good afternoon", "good evening", 
-                    "moro", "greetings", "hallo", "howzit"]
-        if any(g in msg.split() for g in greetings):
+                    "moro", "greetings", "hallo", "howzit", "morning", "afternoon", "evening"]
+        # Check if greeting is at start or is standalone
+        msg_words = msg.split()
+        if any(g in msg_words[:2] for g in greetings):
             response_types.append(("greeting", 80))
         
-        # 4. Namibia mentions - 85%
-        if "namibia" in msg or "namibian" in msg:
-            response_types.append(("search", 85))
+        # 5. Namibia mentions - 90%
+        if "namibia" in msg or "namibian" in msg or "namibians" in msg:
+            response_types.append(("search", 90))
         
-        # 5. Real estate keywords - 95%
+        # 6. Real estate keywords - 95%
         real_estate_keywords = ["house", "property", "land", "plot", "sale", "buy", 
                                "real estate", "windhoek west", "omuthiya", "okahandja",
-                               "bedroom", "bedroomed", "rent", "invest"]
+                               "bedroom", "bedroomed", "rent", "invest", "price"]
         if any(keyword in msg for keyword in real_estate_keywords):
             response_types.append(("search", 95))
         
-        # 6. Specific topics - 90%
+        # 7. Specific topics - 90%
         topics = ["etosha", "sossusvlei", "swakopmund", "windhoek", "himba", "herero", 
                  "desert", "dunes", "fish river", "cheetah", "elephant", "lion", "wildlife",
-                 "safari", "namib", "capital", "visa", "currency", "weather"]
+                 "safari", "namib", "capital", "visa", "currency", "weather", "kalahari",
+                 "skeleton coast", "caprivi", "walvis bay"]
         if any(t in msg for t in topics):
             response_types.append(("search", 90))
         
-        # 7. Travel keywords - 80%
+        # 8. Travel keywords - 85%
         travel = ["travel", "tour", "visit", "trip", "vacation", "holiday", 
-                 "destination", "tourist", "booking"]
+                 "destination", "tourist", "booking", "accommodation"]
         if any(w in msg for w in travel):
-            response_types.append(("search", 80))
+            response_types.append(("search", 85))
         
-        # 8. Quiet chat - 30%
+        # 9. Informational requests - 85%
+        info_keywords = ["information", "info", "details", "learn", "know", "find out",
+                        "interested", "curious", "wondering"]
+        if any(k in msg for k in info_keywords):
+            response_types.append(("search", 85))
+        
+        # 10. Quiet chat - 30%
         if self.is_chat_quiet(chat_id, minutes=20):
             response_types.append(("conversation_starter", 30))
         
         if response_types:
             response_types.sort(key=lambda x: x[1], reverse=True)
             top = response_types[0]
-            if random.random() < (top[1] / 100):
+            # Always respond to high-priority triggers (90%+)
+            if top[1] >= 90 or random.random() < (top[1] / 100):
                 return True, top[0]
         
         return False, None
@@ -171,36 +186,60 @@ class EvaGeisesBot:
         return property
     
     def generate_response(self, message, response_type):
-        """Generate Eva's response"""
-        clean_msg = re.sub(r'@[^\s]*', '', message.lower()).strip()
-        clean_msg = re.sub(r'(hey|hello|hi)\s+(eva|bot|namibia)', '', clean_msg).strip()
+        """Generate Eva's response - IMPROVED INTELLIGENCE"""
+        # BETTER QUERY CLEANING
+        clean_msg = message.lower().strip()
+        
+        # Remove question marks and punctuation
+        clean_msg = re.sub(r'[?!.,;:]+', ' ', clean_msg)
+        
+        # Remove bot mentions
+        clean_msg = re.sub(r'@[^\s]*', '', clean_msg)
+        
+        # Remove common phrases that don't help search
+        phrases_to_remove = [
+            r'(hey|hello|hi)\s+(eva|bot|namibia\s*bot)',
+            r'tell me about',
+            r'can you tell me',
+            r'i want to know',
+            r'could you',
+            r'would you',
+            r'please'
+        ]
+        for phrase in phrases_to_remove:
+            clean_msg = re.sub(phrase, '', clean_msg)
+        
+        clean_msg = clean_msg.strip()
         
         # Search knowledge base
         if response_type == "search" and clean_msg:
-            results = self.kb.search(clean_msg, limit=3)
+            results = self.kb.search(clean_msg, limit=5)
             
             if results:
                 best = results[0]
                 
-                response = f"🤔 *Based on your question:*\n\n"
-                response += f"📌 *{best['topic']}*\n\n"
+                # More natural response introduction
+                response = f"🤔 *About: {best['topic']}*\n\n"
                 response += f"{best['content']}\n\n"
                 
+                # Show related topics if available
                 if len(results) > 1:
                     response += "💡 *Related topics:*\n"
-                    for i, r in enumerate(results[1:], 1):
+                    for i, r in enumerate(results[1:3], 1):  # Show max 2 related
                         response += f"{i}. {r['topic']}\n"
                     response += "\n"
                 
-                response += "ℹ️ Use /menu for more organized topics!"
+                response += "ℹ️ Use /menu for more topics or ask another question!"
                 return response
             else:
+                # Better fallback when no results
                 return (
-                    "🤔 I don't have specific information about that yet.\n\n"
-                    "💡 Try:\n"
-                    "• /menu - Browse all topics\n"
+                    "🤔 I don't have specific information about that in my knowledge base.\n\n"
+                    "💡 *You can:*\n"
+                    "• /menu - Browse all Namibia topics\n"
                     "• /properties - View real estate listings\n"
-                    "• Ask about Namibia tourism, wildlife, or culture!"
+                    "• /topics - See all available topics\n\n"
+                    "Try asking about: tourism, wildlife, culture, geography, or properties!"
                 )
         
         elif response_type == "greeting":
@@ -208,7 +247,7 @@ class EvaGeisesBot:
             return (
                 f"{greeting}! 👋\n\n"
                 f"I'm Eva Geises, your Namibia expert! 🇳🇦\n\n"
-                f"Ask me about tourism, wildlife, culture, or check out our real estate listings!\n\n"
+                f"Ask me about tourism, wildlife, culture, real estate, or anything Namibia-related!\n\n"
                 f"💡 Quick start: /menu"
             )
         
