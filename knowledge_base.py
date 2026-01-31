@@ -120,7 +120,7 @@ class KnowledgeBase:
                 # Culture
                 ('Culture', 'Himba People', 'The Himba are semi-nomadic pastoralists known for their red ochre body paint and traditional lifestyle.', 'himba, tribe, people, culture'),
                 ('Culture', 'Herero People', 'The Herero are known for their Victorian-style dresses and cattle-herding traditions.', 'herero, tribe, people, culture'),
-                ('Culture', 'Kavango People', 'vaKavango are a Bantu ethnic group resides on the Namibian and Angolan border along the Kavango River. They are divided into 5 subgroup such as Kwangali, Mbunza, Shambyu, Gciriku and Mbukushu.', 'kavango, people, culture, tribe'),
+                ('Culture', 'Kavango People', 'vaKavango are Bantu ethnic group resides on the Namibian and Angolan border along the Kavango River. They are divided into 5 subgroup such as Kwangali, Mbunza, Shambyu, Gciriku and Mbukushu.', 'kavango, people, culture, tribe'),
                 
                 # Practical
                 ('Practical', 'Visa Requirements', 'Namibia requires most visitors to have a visa include a valid passport (6+ months validity, 3 blank pages), with options for visa on arrival (VoA) at major ports for a fee (N$1,600 for non-Africans). Check with Namibian embassy for specific requirements.', 'visa, entry, requirements, travel'),
