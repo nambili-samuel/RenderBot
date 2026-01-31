@@ -139,7 +139,7 @@ class KnowledgeBase:
                 # Facts
                 ('Facts', 'Namib Desert', 'The Namib Desert, one of the world\'s oldest and driest deserts, stretches more than 2,000 km from north to south along Namibia\'s Atlantic coast. It is only the place on Earth where the sea meets the desert directly.', 'desert, oldest, namib, record'),
                 ('Facts', 'Population', 'Namibia\'s population is around 3.1 million people, making it one of the world\'s most sparsely populated countries, with a density of about 4 people per square kilometer.', 'population, density, people'),
-                ('Facts', 'Natural Resources', 'Namibia\'s natural resources are crucial to its economy, primarily driven by significant mineral wealth like diamonds, uranium, zinc, copper, and gold, alongside growing oil and gas finds, and vast potential in renewable energy (solar, wind, green hydrogen).', 'stars, stargazing, dark sky, astronomy'),
+                ('Facts', 'Natural Resources', 'Namibia\'s natural resources are crucial to its economy, primarily driven by significant mineral wealth like diamonds, uranium, zinc, copper, and gold, alongside growing oil and gas finds, and vast potential in renewable energy (solar, wind, green hydrogen).', 'economy, resource, minerals'),
                 ('Facts', 'Economy', 'Namibia\'s economy is a lower-middle-income country driven by mining (diamonds, uranium), agriculture, and tourism, but it struggles with high inequality (second-highest Gini coefficient globally) and unemployment despite significant progress.', 'conservation, environment, protected'),
             ]
             
