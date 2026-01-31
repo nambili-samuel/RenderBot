@@ -105,7 +105,7 @@ class KnowledgeBase:
                  'okahandja, house, 3 bedroom, shopping mall, sale, property, loide hashonia, whatsapp'),
                 
                 # Geography
-                ('Geography', 'Where is Namibia?', 'Namibia is in southwestern Africa, bordered by Angola, Zambia, Botswana, South Africa, and the Atlantic Ocean.', 'location, africa, southern africa, borders'),
+                ('Geography', 'Where is Namibia', 'Namibia is in southwestern Africa, bordered by Angola, Zambia, Botswana, South Africa, and the Atlantic Ocean.', 'location, africa, southern africa, borders'),
                 ('Geography', 'Capital of Namibia', 'The capital of Namibia is Windhoek, located in the central highlands.', 'windhoek, capital, city'),
                 ('Geography', 'Size of Namibia', 'Namibia covers about 825,615 square kilometers, making it the 34th largest country.', 'size, area, square kilometers'),
                 
@@ -114,13 +114,13 @@ class KnowledgeBase:
                 ('Tourism', 'Etosha National Park', 'Etosha is Namibia\'s premier wildlife destination with lions, elephants, rhinos, and over 100 mammal species.', 'etosha, safari, wildlife, park'),
                 ('Tourism', 'Sossusvlei', 'Sossusvlei features the world\'s highest sand dunes (up to 380m) in the Namib Desert.', 'sossusvlei, dunes, desert, sand'),
                 ('Tourism', 'Swakopmund', 'Swakopmund is a coastal town with German colonial architecture and adventure activities.', 'swakopmund, coast, beach, german'),
-                ('Tourism', 'Fish River Canyon', 'The Fish River Canyon is located in the south of Namibia. It is the second largest canyon in the world with 160 kilometres long, up to 27 km wide and 550 meters deep.', 'canyon, hiking, fish river'),
+                ('Tourism', 'Fish River Canyon', 'The Fish River Canyon is located in the south of Namibia. It is the the second largest canyon in the world with 160 kilometres long, up to 27 km wide and 550 meters deep.', 'canyon, hiking, fish river'),
                 ('Tourism', 'Namib Desert', 'The Namib Desert is the world\'s oldest desert with stunning landscapes and unique wildlife.', 'desert, namib, oldest'),
                 
                 # Culture
                 ('Culture', 'Himba People', 'The Himba are semi-nomadic pastoralists known for their red ochre body paint and traditional lifestyle.', 'himba, tribe, people, culture'),
                 ('Culture', 'Herero People', 'The Herero are known for their Victorian-style dresses and cattle-herding traditions.', 'herero, tribe, people, culture'),
-                ('Culture', 'Kavango People', 'vaKavango are Bantu ethnic group resides on the Namibian and Angolan border along the Kavango River. They are divided into 5 subgroup such as Kwangali, Mbunza, Shambyu, Gciriku and Mbukushu.', 'kavango, people, culture, tribe'),
+                ('Culture', 'Languages in Namibia', 'English is official, but Afrikaans, German, Oshiwambo, and other indigenous languages are spoken.', 'language, english, afrikaans, oshiwambo'),
                 
                 # Practical
                 ('Practical', 'Visa Requirements', 'Namibia requires most visitors to have a visa include a valid passport (6+ months validity, 3 blank pages), with options for visa on arrival (VoA) at major ports for a fee (N$1,600 for non-Africans). Check with Namibian embassy for specific requirements.', 'visa, entry, requirements, travel'),
@@ -139,7 +139,7 @@ class KnowledgeBase:
                 # Facts
                 ('Facts', 'Namib Desert', 'The Namib Desert, one of the world\'s oldest and driest deserts, stretches more than 2,000 km from north to south along Namibia\'s Atlantic coast. It is only the place on Earth where the sea meets the desert directly.', 'desert, oldest, namib, record'),
                 ('Facts', 'Population', 'Namibia\'s population is around 3.1 million people, making it one of the world\'s most sparsely populated countries, with a density of about 4 people per square kilometer.', 'population, density, people'),
-                ('Facts', 'Natural Resources', 'Namibia\'s natural resources are crucial to its economy, primarily driven by significant mineral wealth like diamonds, uranium, zinc, copper, and gold, alongside growing oil and gas finds, and vast potential in renewable energy (solar, wind, green hydrogen).', 'economy, resource, minerals'),
+                ('Facts', 'Natural Resources', 'Namibia\'s natural resources are crucial to its economy, primarily driven by significant mineral wealth like diamonds, uranium, zinc, copper, and gold, alongside growing oil and gas finds, and vast potential in renewable energy (solar, wind, green hydrogen).', 'stars, stargazing, dark sky, astronomy'),
                 ('Facts', 'Economy', 'Namibia\'s economy is a lower-middle-income country driven by mining (diamonds, uranium), agriculture, and tourism, but it struggles with high inequality (second-highest Gini coefficient globally) and unemployment despite significant progress.', 'conservation, environment, protected'),
             ]
             
