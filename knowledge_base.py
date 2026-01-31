@@ -355,7 +355,7 @@ class KnowledgeBase:
             self.sync_with_csv()
     
     def search(self, query, limit=5):
-        """Search the knowledge base"""
+        """Search the knowledge base with intelligent query processing"""
         # Ensure we have data and auto-sync if needed
         self.ensure_data()
         
@@ -370,41 +370,120 @@ class KnowledgeBase:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
-            # Clean and prepare search query
-            search_terms = query.lower().strip().split()
-            search_query = ' OR '.join(search_terms)
+            # INTELLIGENT QUERY CLEANING
+            clean_query = query.lower().strip()
             
-            # Try FTS search first
-            cursor.execute('''
-                SELECT k.category, k.topic, k.content, k.keywords
-                FROM knowledge_fts f
-                JOIN knowledge k ON k.id = f.rowid
-                WHERE knowledge_fts MATCH ?
-                ORDER BY rank
-                LIMIT ?
-            ''', (search_query, limit))
+            # Remove question marks and punctuation
+            clean_query = re.sub(r'[?!.,;:]+', ' ', clean_query)
             
-            results = cursor.fetchall()
+            # Remove common question words that don't help search
+            question_words = ['what', 'where', 'when', 'who', 'why', 'how', 'is', 'are', 
+                            'was', 'were', 'do', 'does', 'did', 'can', 'could', 'would',
+                            'tell', 'me', 'about', 'the', 'a', 'an']
             
-            # Fallback to LIKE search
-            if not results:
-                search_pattern = f'%{query}%'
+            # Split into words and filter
+            words = clean_query.split()
+            meaningful_words = [w for w in words if w not in question_words and len(w) > 2]
+            
+            # If all words were filtered, use original query
+            if not meaningful_words:
+                meaningful_words = words
+            
+            # Create search terms
+            search_terms = meaningful_words
+            
+            # MULTI-STRATEGY SEARCH for better results
+            all_results = []
+            
+            # Strategy 1: Exact phrase match (highest priority)
+            if len(meaningful_words) > 1:
+                phrase = ' '.join(meaningful_words)
                 cursor.execute('''
-                    SELECT category, topic, content, keywords
+                    SELECT category, topic, content, keywords, 1 as priority
                     FROM knowledge
-                    WHERE topic LIKE ? OR content LIKE ? OR keywords LIKE ?
-                    ORDER BY 
-                        CASE 
-                            WHEN topic LIKE ? THEN 1
-                            WHEN content LIKE ? THEN 2
-                            ELSE 3
-                        END
+                    WHERE LOWER(topic) LIKE ? OR LOWER(content) LIKE ? OR LOWER(keywords) LIKE ?
                     LIMIT ?
-                ''', (search_pattern, search_pattern, search_pattern, 
-                      search_pattern, search_pattern, limit))
-                results = cursor.fetchall()
+                ''', (f'%{phrase}%', f'%{phrase}%', f'%{phrase}%', limit))
+                all_results.extend(cursor.fetchall())
             
-            return [dict(row) for row in results]
+            # Strategy 2: Individual word FTS search
+            if not all_results:
+                fts_query = ' OR '.join(search_terms)
+                cursor.execute('''
+                    SELECT k.category, k.topic, k.content, k.keywords, 2 as priority
+                    FROM knowledge_fts f
+                    JOIN knowledge k ON k.id = f.rowid
+                    WHERE knowledge_fts MATCH ?
+                    ORDER BY rank
+                    LIMIT ?
+                ''', (fts_query, limit * 2))
+                all_results.extend(cursor.fetchall())
+            
+            # Strategy 3: Individual word LIKE search (fallback)
+            if not all_results:
+                for term in search_terms[:3]:  # Use top 3 terms
+                    pattern = f'%{term}%'
+                    cursor.execute('''
+                        SELECT category, topic, content, keywords, 3 as priority
+                        FROM knowledge
+                        WHERE topic LIKE ? OR content LIKE ? OR keywords LIKE ?
+                        LIMIT ?
+                    ''', (pattern, pattern, pattern, limit))
+                    all_results.extend(cursor.fetchall())
+            
+            # INTELLIGENT RANKING
+            # Remove duplicates and sort by relevance
+            seen = set()
+            unique_results = []
+            
+            for row in all_results:
+                row_dict = dict(row)
+                topic_key = row_dict['topic']
+                
+                if topic_key not in seen:
+                    seen.add(topic_key)
+                    
+                    # Calculate relevance score
+                    score = 0
+                    topic_lower = row_dict['topic'].lower()
+                    content_lower = row_dict['content'].lower()
+                    keywords_lower = (row_dict.get('keywords') or '').lower()
+                    
+                    # Boost score if search terms appear in topic (most important)
+                    for term in search_terms:
+                        if term in topic_lower:
+                            score += 10
+                        if term in keywords_lower:
+                            score += 5
+                        if term in content_lower:
+                            score += 2
+                    
+                    # Boost if exact phrase match
+                    if len(meaningful_words) > 1:
+                        phrase = ' '.join(meaningful_words)
+                        if phrase in topic_lower:
+                            score += 20
+                        if phrase in keywords_lower:
+                            score += 15
+                    
+                    # Add priority from search strategy
+                    priority = row_dict.get('priority', 3)
+                    score += (4 - priority) * 5  # Strategy 1 gets +15, 2 gets +10, 3 gets +5
+                    
+                    row_dict['_score'] = score
+                    unique_results.append(row_dict)
+            
+            # Sort by score descending
+            unique_results.sort(key=lambda x: x.get('_score', 0), reverse=True)
+            
+            # Remove score field and return top results
+            final_results = []
+            for r in unique_results[:limit]:
+                r.pop('_score', None)
+                r.pop('priority', None)
+                final_results.append(r)
+            
+            return final_results
     
     def add_knowledge(self, topic, content, category='General', keywords=''):
         """Add new knowledge entry"""
