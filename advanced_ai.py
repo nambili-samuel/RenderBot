@@ -129,15 +129,15 @@ class AdvancedAI:
     def tell_namibia_story(self) -> str:
         """Generate engaging stories about Namibia"""
         stories = [
-            """📖 *The Legend of the Namib Desert*
+            """📖 *The San People*
 
-Once, thousands of years ago, the Namib was a lush paradise. But the spirits decided to test the resilience of its people.
+The San people (or Bushmen) are an indigenous hunter-gatherer group, one of the world's oldest momadic people with roots dating back to 100,000 years.
 
-They sent fierce winds and scorching heat, transforming the land into an endless desert. Yet the people adapted, learning to read the dunes like books and find water where none seemed to exist.
+Primarily living in Botswana, Namibia, and surrounding nations.
 
-The desert's red sands now tell stories of survival, wisdom, and the unbreakable human spirit. When you walk on Sossusvlei's dunes, you're walking on ancient memories.
+The term "San" is a Khoekhoe term, but themselves they prefer to be identified as !Kung or Ju/'hoansi.
 
-🌅 *The desert doesn't just survive—it thrives.*
+🌅 *Traditionally nomadic.*
 
 What's your favorite Namibia story? Share with us!""",
 
@@ -165,17 +165,17 @@ They're semi-nomadic pastoralists, moving with their cattle, reading the land, r
 
 What traditions do you value?""",
 
-            """📖 *Swakopmund: Where Desert Meets Ocean*
+            """🏖️ *Swakopmund: Where Desert Meets Ocean*
 
-They said it was impossible—a town where the Namib Desert touches the Atlantic Ocean. But Germans in the 1800s said "watch us."
+Swakopmund is both a quiet retreat and a wild experience. Simultaneously a city of timelessness and a starting point for your wildest dreams."
 
-They built a port town in the harshest conditions. Today, Swakopmund is a gem of German architecture surrounded by towering dunes and crashing waves.
+Swakopmund is like a mirage between two worlds. On one side, the endless Namib Desert, shimmering under the sun like living gold.
 
-Where else can you sandboard in the morning and surf in the afternoon? Where fog rolls over desert and adventure sports thrive?
+If you’re looking for something even crazier, try sandboarding in Dune 7. From nearby Walvis Bay, cruises set off, taking you amidst playful dolphins and curious seals. You might even see a pelican joining the boat directly in search of fish.
 
-🏖️ *Impossible is just an invitation to innovate.*
+*The Little Wonders of Namib Desert.*
 
-What's your Swakopmund adventure?"""
+Have you been in Swakopmund, tell us what was your adventure?"""
         ]
         
         # Track stories to avoid repetition
@@ -198,7 +198,7 @@ What's your Swakopmund adventure?"""
                     "Sossusvlei (Red Sand Dunes)",
                     "Swakopmund (Coastal Adventure)",
                     "Fish River Canyon (Hiking)",
-                    "Damaraland (Desert Elephants)"
+                    "Okavango Delta (Trophy Hunting)"
                 ]
             },
             {
@@ -208,11 +208,11 @@ What's your Swakopmund adventure?"""
                     "Beach House (Swakopmund)",
                     "Safari Lodge (Near Etosha)",
                     "Farm/Ranch (Countryside)",
-                    "Commercial Land"
+                    "Commercial Property"
                 ]
             },
             {
-                "question": "🌍 What should Namibia focus on for tourism?",
+                "question": "🌍 What should Namibia do to attract tourists?",
                 "options": [
                     "Luxury Safari Experiences",
                     "Adventure Sports & Activities",
@@ -222,7 +222,7 @@ What's your Swakopmund adventure?"""
                 ]
             },
             {
-                "question": "🦏 Which Namibian wildlife would you most like to see?",
+                "question": "🦏 Which wildlife would you most like to see in Namibia?",
                 "options": [
                     "Lions & Cheetahs",
                     "Desert Elephants",
@@ -262,7 +262,7 @@ What's your Swakopmund adventure?"""
             
             "💭 *Let's Discuss:*\n\n**What makes Namibia unique compared to other African countries?**\n\nThink about:\n🦁 Wildlife\n🏜️ Landscapes\n👥 Culture\n🏛️ History\n\nWhat stands out to you? 🤔",
             
-            "💭 *Question for the Group:*\n\n**If you could improve ONE thing about tourism in Namibia, what would it be?**\n\n📱 Better connectivity?\n🏨 More accommodations?\n✈️ Cheaper flights?\n🗺️ Better infrastructure?\n\nYour ideas matter! 💡",
+            "💭 *Question for the Group:*\n\n**If you could improve ONE thing about tourism in Namibia, what would it be?**\n\n📱 Better connectivity?\n🏨 More accommodations?\n✈️ Intercity transport?\n🗺️ Better infrastructure?\n\nYour ideas matter! 💡",
             
             "💭 *Discussion Time:*\n\n**Namibia's real estate market - investment opportunity or just hype?**\n\n🏠 Property prices reasonable?\n📈 Growth potential?\n🌍 Foreign investment?\n\nInvestors, what do you think? 💼",
             
@@ -322,7 +322,7 @@ What's your Swakopmund adventure?"""
     def get_random_fact(self) -> str:
         """Get random interesting facts about Namibia"""
         facts = [
-            "🌟 *Did You Know?*\n\nNamibia has the world's oldest desert - the Namib Desert is 55-80 million years old! 🏜️",
+            "🌟 *Did You Know?*\n\nNamibia has the world's oldest desert - Namib Desert is 55-80 million years old! 🏜️",
             "🌟 *Fun Fact:*\n\nNamibia was the first African country to incorporate environmental protection into its constitution! 🌍",
             "🌟 *Amazing:*\n\nNamibia has more cheetahs than any other country in the world! 🐆",
             "🌟 *Did You Know?*\n\nThe Skeleton Coast has over 1,000 shipwrecks along its shores! 🚢",
