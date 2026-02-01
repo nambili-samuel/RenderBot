@@ -71,7 +71,7 @@ class AdvancedAI:
         if weather_info:
             response = "🌤️ *Namibia Weather Update*\n\n"
             response += "\n".join(weather_info)
-            response += "\n\n_Live weather data from Open-Meteo_"
+            response += "\n\n_Live weather data of Namibia_"
             return response
         else:
             return "🌤️ *Namibia Weather*\n\nGenerally sunny with warm temperatures. Perfect safari weather! ☀️"
