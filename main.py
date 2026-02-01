@@ -448,6 +448,8 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show help"""
+    is_admin = update.effective_user.id in ADMIN_IDS
+    
     help_text = (
         "🇳🇦 *Eva Geises - Advanced AI Assistant*\n\n"
         "🎯 *Core Commands:*\n"
@@ -463,6 +465,20 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/poll - Create engaging poll\n"
         "/discuss - Start discussion\n"
         "/fact - Random Namibia fact\n\n"
+    )
+    
+    if is_admin:
+        help_text += (
+            "👑 *Admin Commands:*\n"
+            "/test_automation - Test all features\n"
+            "/force_post [type] - Post content now\n"
+            "/activate_group - Activate this group\n"
+            "/add - Add knowledge\n"
+            "/stats - View statistics\n\n"
+            "💡 force_post types: greeting, property, poll, story, weather, news, discuss, brainstorm\n\n"
+        )
+    
+    help_text += (
         "💬 *How to use:*\n"
         "• Ask questions naturally\n"
         "• Mention topics like 'Etosha', 'Sossusvlei'\n"
@@ -554,6 +570,208 @@ async def fact_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Share a random fact"""
     fact = eva.ai.get_random_fact()
     await update.message.reply_text(fact, parse_mode="Markdown")
+
+async def test_automation_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Test all automation features - Admin only"""
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("🔒 This command is only available to administrators.")
+        return
+    
+    chat_id = update.effective_chat.id
+    
+    # Track this chat as active
+    eva.db.track_chat(chat_id, update.effective_chat.type, update.effective_chat.title or "Test Chat")
+    
+    await update.message.reply_text(
+        "🧪 *Testing Automation Features*\n\n"
+        "Triggering all automated features now...\n\n"
+        "Watch for:\n"
+        "1. Greeting\n"
+        "2. Property post\n"
+        "3. AI content (poll/story/weather/etc)\n\n"
+        "⏳ Please wait...",
+        parse_mode="Markdown"
+    )
+    
+    # Test greeting
+    try:
+        greeting = eva.get_periodic_greeting()
+        await update.message.reply_text(greeting, parse_mode="Markdown")
+        await asyncio.sleep(2)
+    except Exception as e:
+        logger.error(f"Greeting test error: {e}")
+    
+    # Test property post
+    try:
+        property_data = eva.get_next_property()
+        if property_data:
+            message = f"🏠 *Featured Property*\n\n"
+            message += f"*{property_data['topic']}*\n\n"
+            message += f"{property_data['content']}\n\n"
+            message += "💡 Use /properties to see all available listings!"
+            await update.message.reply_text(message, parse_mode="Markdown")
+            await asyncio.sleep(2)
+    except Exception as e:
+        logger.error(f"Property test error: {e}")
+    
+    # Test AI content
+    try:
+        story = eva.ai.tell_namibia_story()
+        await update.message.reply_text(story, parse_mode="Markdown")
+        await asyncio.sleep(2)
+    except Exception as e:
+        logger.error(f"Story test error: {e}")
+    
+    await update.message.reply_text(
+        "✅ *Test Complete!*\n\n"
+        "If you see greeting, property, and story above, automation is working!\n\n"
+        "Automated posts will now happen:\n"
+        "• Every 2 hours - Greetings\n"
+        "• Every 4 hours - AI content\n"
+        "• 10 AM, 2 PM, 6 PM - Properties\n\n"
+        "💡 Use /force_post to manually trigger content anytime.",
+        parse_mode="Markdown"
+    )
+
+async def force_post_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Force post content now - Admin only"""
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("🔒 This command is only available to administrators.")
+        return
+    
+    chat_id = update.effective_chat.id
+    
+    # Track chat
+    eva.db.track_chat(chat_id, update.effective_chat.type, update.effective_chat.title or "Group")
+    
+    # Determine what to post
+    args = context.args
+    content_type = args[0].lower() if args else "random"
+    
+    try:
+        if content_type == "greeting":
+            greeting = eva.get_periodic_greeting()
+            await update.message.reply_text(greeting, parse_mode="Markdown")
+        
+        elif content_type == "property":
+            property_data = eva.get_next_property()
+            if property_data:
+                message = f"🏠 *Featured Property*\n\n"
+                message += f"*{property_data['topic']}*\n\n"
+                message += f"{property_data['content']}\n\n"
+                message += "💡 Use /properties to see all available listings!"
+                await update.message.reply_text(message, parse_mode="Markdown")
+            else:
+                await update.message.reply_text("❌ No properties available")
+        
+        elif content_type == "poll":
+            poll_data = eva.ai.generate_poll()
+            await context.bot.send_poll(
+                chat_id=chat_id,
+                question=poll_data["question"],
+                options=poll_data["options"],
+                is_anonymous=False
+            )
+        
+        elif content_type == "story":
+            story = eva.ai.tell_namibia_story()
+            await update.message.reply_text(story, parse_mode="Markdown")
+        
+        elif content_type == "weather":
+            weather = await eva.ai.get_namibia_weather()
+            await update.message.reply_text(weather, parse_mode="Markdown")
+        
+        elif content_type == "news":
+            news = await eva.ai.get_namibia_news()
+            await update.message.reply_text(news, parse_mode="Markdown")
+        
+        elif content_type == "discuss":
+            discussion = eva.ai.generate_discussion_topic()
+            await update.message.reply_text(discussion, parse_mode="Markdown")
+        
+        elif content_type == "brainstorm":
+            ideas = eva.ai.generate_brainstorm_ideas()
+            await update.message.reply_text(ideas, parse_mode="Markdown")
+        
+        else:
+            # Random content
+            content_types = ["poll", "story", "weather", "news", "discuss", "brainstorm", "fact"]
+            random_type = random.choice(content_types)
+            
+            if random_type == "poll":
+                poll_data = eva.ai.generate_poll()
+                await context.bot.send_poll(
+                    chat_id=chat_id,
+                    question=poll_data["question"],
+                    options=poll_data["options"],
+                    is_anonymous=False
+                )
+            elif random_type == "story":
+                story = eva.ai.tell_namibia_story()
+                await update.message.reply_text(story, parse_mode="Markdown")
+            elif random_type == "weather":
+                weather = await eva.ai.get_namibia_weather()
+                await update.message.reply_text(weather, parse_mode="Markdown")
+            elif random_type == "news":
+                news = await eva.ai.get_namibia_news()
+                await update.message.reply_text(news, parse_mode="Markdown")
+            elif random_type == "discuss":
+                discussion = eva.ai.generate_discussion_topic()
+                await update.message.reply_text(discussion, parse_mode="Markdown")
+            elif random_type == "brainstorm":
+                ideas = eva.ai.generate_brainstorm_ideas()
+                await update.message.reply_text(ideas, parse_mode="Markdown")
+            else:
+                fact = eva.ai.get_random_fact()
+                await update.message.reply_text(fact, parse_mode="Markdown")
+        
+        logger.info(f"✅ Force posted: {content_type}")
+    
+    except Exception as e:
+        logger.error(f"Force post error: {e}")
+        await update.message.reply_text(f"❌ Error posting content: {e}")
+
+async def activate_group_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Activate current group for automated posting - Admin only"""
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("🔒 This command is only available to administrators.")
+        return
+    
+    chat_id = update.effective_chat.id
+    chat_type = update.effective_chat.type
+    chat_title = update.effective_chat.title or "Private Chat"
+    
+    # Track chat as active
+    eva.db.track_chat(chat_id, chat_type, chat_title)
+    
+    # Verify it's in active chats
+    active_chats = eva.db.get_active_chats()
+    is_active = any(chat['chat_id'] == chat_id for chat in active_chats)
+    
+    if is_active:
+        await update.message.reply_text(
+            f"✅ *Group Activated!*\n\n"
+            f"📱 *Chat:* {chat_title}\n"
+            f"🆔 *ID:* `{chat_id}`\n"
+            f"📊 *Type:* {chat_type}\n\n"
+            f"🤖 *Automated Features:*\n"
+            f"• Greetings: Every 2 hours\n"
+            f"• AI Content: Every 4 hours\n"
+            f"• Properties: 10 AM, 2 PM, 6 PM\n\n"
+            f"💡 First posts start in:\n"
+            f"• 5 minutes (greeting)\n"
+            f"• 30 minutes (AI content)\n\n"
+            f"Use /test_automation to test all features now!",
+            parse_mode="Markdown"
+        )
+    else:
+        await update.message.reply_text(
+            f"⚠️ *Activation Issue*\n\n"
+            f"Chat ID: `{chat_id}`\n\n"
+            f"Group was tracked but not appearing in active chats. "
+            f"Please contact support.",
+            parse_mode="Markdown"
+        )
 
 # =========================================================
 # MESSAGE HANDLERS
@@ -976,6 +1194,11 @@ def main():
     app.add_handler(CommandHandler('poll', poll_command))
     app.add_handler(CommandHandler('discuss', discuss_command))
     app.add_handler(CommandHandler('fact', fact_command))
+    
+    # Admin Testing & Control Commands
+    app.add_handler(CommandHandler('test_automation', test_automation_command))
+    app.add_handler(CommandHandler('force_post', force_post_command))
+    app.add_handler(CommandHandler('activate_group', activate_group_command))
     
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, handle_new_members))
