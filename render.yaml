@@ -1,24 +1,44 @@
 services:
-  # Eva Geises Telegram Bot
+  # Eva Geises Telegram Bot - Enhanced Configuration
   - type: web
     name: eva-geises-bot
     env: python
-    region: frankfurt  # or oregon, singapore - choose closest to you
+    region: frankfurt  # Choose: frankfurt, oregon, singapore
     plan: free
-    buildCommand: pip install -r requirements.txt
+    
+    # Build configuration
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
     startCommand: python main.py
+    
+    # Health check configuration (IMPORTANT for staying awake!)
+    healthCheckPath: /health
+    
+    # Environment variables
     envVars:
       - key: TELEGRAM_BOT_TOKEN
-        sync: false  # You'll add this manually in Render dashboard
+        sync: false  # Set manually in Render dashboard
+      
       - key: ADMIN_IDS
-        sync: false  # You'll add this manually in Render dashboard
+        sync: false  # Set to: 2114234015
+      
       - key: DATABASE_PATH
         value: /opt/render/project/src/bot_data.db
+      
       - key: PYTHON_VERSION
         value: 3.11.0
+      
+      - key: PORT
+        value: 10000
+      
+      # Render auto-provides this, but we can override if needed
+      # - key: RENDER_EXTERNAL_URL
+      #   sync: false
     
-    # Auto-deploy settings
+    # Auto-deploy on git push
     autoDeploy: true
     
-    # Health check (optional but recommended)
-    healthCheckPath: /
+    # Disk storage for database
+    disk:
+      name: bot-data
+      mountPath: /opt/render/project/src
+      sizeGB: 1  # 1GB free tier
