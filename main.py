@@ -1270,10 +1270,16 @@ def main():
     # Extract base URL from webhook URL for self-ping
     service_url = WEBHOOK_URL.replace('/webhook', '') if WEBHOOK_URL else None
     
-    # Start enhanced health check server with self-ping
-    run_health_server_background(port=8080, service_url=service_url)
-    logger.info("🏥 Enhanced health server started on port 8080")
-    logger.info("🔄 Self-ping enabled - Service will stay awake!")
+    # Start health check server (try enhanced version, fallback to basic)
+    try:
+        run_health_server_background(port=8080, service_url=service_url)
+        logger.info("🏥 Enhanced health server started on port 8080")
+        logger.info("🔄 Self-ping enabled - Service will stay awake!")
+    except TypeError:
+        # Fallback to old version without service_url
+        run_health_server_background(port=8080)
+        logger.info("🏥 Basic health server started on port 8080")
+        logger.warning("⚠️ Update health_server.py for self-ping feature")
     
     # Build application
     try:
