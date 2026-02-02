@@ -39,9 +39,21 @@ if not TELEGRAM_BOT_TOKEN:
 ADMIN_IDS_STR = os.environ.get("ADMIN_IDS", "")
 ADMIN_IDS = set(map(int, ADMIN_IDS_STR.split(','))) if ADMIN_IDS_STR else set()
 
-# Webhook configuration
-WEBHOOK_URL = "https://renderbot-x64y.onrender.com/webhook"
+# Webhook configuration - Auto-detect from Render
+RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL")
+if RENDER_EXTERNAL_URL:
+    # Render provides this automatically
+    WEBHOOK_URL = f"{RENDER_EXTERNAL_URL}/webhook"
+    logger.info(f"✅ Using Render auto-detected URL: {RENDER_EXTERNAL_URL}")
+else:
+    # Fallback to manual configuration
+    WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "https://renderbot-x64y.onrender.com/webhook")
+    logger.warning(f"⚠️ Using fallback webhook URL: {WEBHOOK_URL}")
+
 PORT = int(os.environ.get("PORT", "10000"))
+
+logger.info(f"🌐 Webhook will be: {WEBHOOK_URL}")
+logger.info(f"🔌 Port: {PORT}")
 
 # =========================================================
 # EVA GEISES - NAMIBIA BOT ENGINE WITH FULL GROUP MANAGEMENT
@@ -773,6 +785,108 @@ async def activate_group_command(update: Update, context: ContextTypes.DEFAULT_T
             parse_mode="Markdown"
         )
 
+async def diagnose_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Diagnose automation issues - Shows detailed status"""
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    
+    # Check if user is admin
+    is_admin = user_id in ADMIN_IDS
+    
+    report = f"🔍 *Eva Geises Diagnostic Report*\n\n"
+    
+    # 1. User Info
+    report += f"👤 *Your Info:*\n"
+    report += f"User ID: `{user_id}`\n"
+    report += f"Is Admin: {'✅ YES' if is_admin else '❌ NO - Add to ADMIN_IDS!'}\n\n"
+    
+    if ADMIN_IDS:
+        report += f"Current ADMIN_IDS: `{', '.join(map(str, ADMIN_IDS))}`\n\n"
+    else:
+        report += f"⚠️ ADMIN_IDS not set in environment!\n\n"
+    
+    # 2. Chat Info
+    report += f"💬 *Chat Info:*\n"
+    report += f"Chat ID: `{chat_id}`\n"
+    report += f"Chat Type: {update.effective_chat.type}\n"
+    report += f"Chat Title: {update.effective_chat.title or 'N/A'}\n\n"
+    
+    # 3. Database Status
+    try:
+        active_chats = eva.db.get_active_chats()
+        is_tracked = any(chat['chat_id'] == chat_id for chat in active_chats)
+        
+        report += f"💾 *Database Status:*\n"
+        report += f"This chat tracked: {'✅ YES' if is_tracked else '❌ NO - Use /activate_group'}\n"
+        report += f"Total active chats: {len(active_chats)}\n\n"
+    except Exception as e:
+        report += f"💾 *Database Status:* ❌ Error: {e}\n\n"
+    
+    # 4. Features Status
+    report += f"🤖 *Features Status:*\n"
+    try:
+        # Test knowledge base
+        results = eva.kb.search("Namibia", limit=1)
+        report += f"Knowledge Base: {'✅ Working (' + str(len(eva.kb.get_all_topics())) + ' topics)' if results else '⚠️ No data'}\n"
+        
+        # Test properties
+        properties = eva.get_property_posts()
+        report += f"Properties: {'✅ ' + str(len(properties)) + ' available' if properties else '❌ None found'}\n"
+        
+        # Test AI features
+        report += f"Advanced AI: {'✅ Loaded' if hasattr(eva, 'ai') else '❌ Not loaded'}\n"
+        report += f"Smart Features: {'✅ Loaded' if hasattr(eva, 'smart') else '❌ Not loaded'}\n"
+        
+    except Exception as e:
+        report += f"❌ Error testing features: {e}\n"
+    
+    report += "\n"
+    
+    # 5. Job Queue Status
+    try:
+        if hasattr(context.application, 'job_queue') and context.application.job_queue:
+            jobs = context.application.job_queue.jobs()
+            report += f"⏰ *Job Queue Status:*\n"
+            report += f"Job Queue: ✅ Active ({len(jobs)} jobs)\n"
+            
+            job_names = [job.name for job in jobs if hasattr(job, 'name') and job.name]
+            if job_names:
+                report += f"\n*Scheduled Jobs:*\n"
+                for name in job_names:
+                    report += f"• {name}\n"
+        else:
+            report += f"⏰ *Job Queue Status:* ❌ NOT ACTIVE\n"
+            report += f"⚠️ Automated posts won't work!\n"
+    except Exception as e:
+        report += f"⏰ *Job Queue Status:* ❌ Error: {e}\n"
+    
+    report += "\n"
+    
+    # 6. Fix Instructions
+    report += f"🔧 *How to Fix:*\n"
+    
+    if not ADMIN_IDS:
+        report += f"1. ⚠️ Set ADMIN_IDS in Render:\n"
+        report += f"   Environment variable: `ADMIN_IDS={user_id}`\n\n"
+    elif not is_admin:
+        report += f"1. ⚠️ Add yourself to ADMIN_IDS:\n"
+        report += f"   Change to: `ADMIN_IDS={','.join(map(str, list(ADMIN_IDS) + [user_id]))}`\n\n"
+    
+    if not is_tracked and is_admin:
+        report += f"2. Activate this chat: /activate_group\n\n"
+    
+    if not hasattr(context.application, 'job_queue') or not context.application.job_queue:
+        report += f"3. ❌ Job Queue not working! Use manual posting:\n"
+        report += f"   /force_post - Post content manually\n\n"
+    
+    if is_admin:
+        report += f"💡 *Admin Commands:*\n"
+        report += f"/activate_group - Activate automation\n"
+        report += f"/test_automation - Test all features\n"
+        report += f"/force_post [type] - Manual posting\n"
+    
+    await update.message.reply_text(report, parse_mode="Markdown")
+
 # =========================================================
 # MESSAGE HANDLERS
 # =========================================================
@@ -1153,9 +1267,13 @@ def main():
     logger.info(f"✅ Properties: {len(eva.get_property_posts())}")
     logger.info("=" * 60)
     
-    # Start health check server
-    run_health_server_background(port=8080)
-    logger.info("🏥 Health server started on port 8080")
+    # Extract base URL from webhook URL for self-ping
+    service_url = WEBHOOK_URL.replace('/webhook', '') if WEBHOOK_URL else None
+    
+    # Start enhanced health check server with self-ping
+    run_health_server_background(port=8080, service_url=service_url)
+    logger.info("🏥 Enhanced health server started on port 8080")
+    logger.info("🔄 Self-ping enabled - Service will stay awake!")
     
     # Build application
     try:
@@ -1199,6 +1317,7 @@ def main():
     app.add_handler(CommandHandler('test_automation', test_automation_command))
     app.add_handler(CommandHandler('force_post', force_post_command))
     app.add_handler(CommandHandler('activate_group', activate_group_command))
+    app.add_handler(CommandHandler('diagnose', diagnose_command))
     
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, handle_new_members))
@@ -1248,14 +1367,26 @@ def main():
     
     logger.info("🚀 Eva is running with full group management...")
     logger.info(f"🔗 Webhook URL: {WEBHOOK_URL}")
+    logger.info(f"🔌 Listening on: 0.0.0.0:{PORT}")
+    logger.info(f"📡 Webhook path: /webhook")
+    logger.info(f"🏥 Health check: port 8080")
+    logger.info("=" * 60)
     
-    app.run_webhook(
-        listen="0.0.0.0",
-        port=PORT,
-        url_path="/webhook",
-        webhook_url=WEBHOOK_URL,
-        drop_pending_updates=True
-    )
+    try:
+        # Run webhook with improved configuration
+        app.run_webhook(
+            listen="0.0.0.0",
+            port=PORT,
+            url_path="/webhook",
+            webhook_url=WEBHOOK_URL,
+            drop_pending_updates=True,
+            allowed_updates=["message", "callback_query", "chat_member"],
+            secret_token=None  # Can add security token if needed
+        )
+    except Exception as e:
+        logger.error(f"❌ Webhook error: {e}")
+        logger.info("🔄 Attempting to restart webhook...")
+        raise
 
 if __name__ == "__main__":
     main()
