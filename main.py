@@ -20,6 +20,7 @@ from knowledge_base import KnowledgeBase
 from health_server import run_health_server_background
 from smart_features import SmartFeatures
 from advanced_ai import AdvancedAI
+from conversational_intelligence import ConversationalIntelligence
 
 # Configure logging
 logging.basicConfig(
@@ -64,6 +65,7 @@ class EvaGeisesBot:
         self.kb = KnowledgeBase()
         self.smart = SmartFeatures()
         self.ai = AdvancedAI()  # Advanced AI features
+        self.ci = ConversationalIntelligence()  # Conversational intelligence
         self.last_activity = {}
         self.welcomed_users = set()
         self.last_greeting = {}
@@ -71,6 +73,7 @@ class EvaGeisesBot:
         self.property_rotation_index = 0
         logger.info(f"🇳🇦 Eva Geises initialized with {len(self.kb.get_all_topics())} topics")
         logger.info("🤖 Advanced AI features loaded")
+        logger.info("🧠 Conversational intelligence enabled")
     
     def get_greeting(self):
         """Get time-appropriate greeting"""
@@ -205,18 +208,50 @@ class EvaGeisesBot:
         self.property_rotation_index += 1
         return property
     
-    def generate_response(self, message, response_type):
-        """Generate Eva's response - IMPROVED INTELLIGENCE"""
-        # BETTER QUERY CLEANING
+    def generate_response(self, message, response_type, user_id=None):
+        """Generate Eva's response - CONVERSATIONAL INTELLIGENCE"""
+        
+        # Use conversational intelligence if user_id provided
+        if user_id and response_type == "search":
+            # BETTER QUERY CLEANING
+            clean_msg = message.lower().strip()
+            
+            # Remove question marks and punctuation
+            clean_msg = re.sub(r'[?!.,;:]+', ' ', clean_msg)
+            
+            # Remove bot mentions
+            clean_msg = re.sub(r'@[^\s]*', '', clean_msg)
+            
+            # Remove common phrases that don't help search
+            phrases_to_remove = [
+                r'(hey|hello|hi)\s+(eva|bot|namibia\s*bot)',
+                r'tell me about',
+                r'can you tell me',
+                r'i want to know',
+                r'could you',
+                r'would you',
+                r'please'
+            ]
+            for phrase in phrases_to_remove:
+                clean_msg = re.sub(phrase, '', clean_msg)
+            
+            clean_msg = clean_msg.strip()
+            
+            # Search knowledge base
+            results = self.kb.search(clean_msg, limit=5) if clean_msg else []
+            
+            # Use conversational intelligence to generate response
+            intelligent_response = self.ci.generate_intelligent_response(
+                message, user_id, results, response_type
+            )
+            
+            return intelligent_response
+        
+        # Fallback to standard responses
         clean_msg = message.lower().strip()
-        
-        # Remove question marks and punctuation
         clean_msg = re.sub(r'[?!.,;:]+', ' ', clean_msg)
-        
-        # Remove bot mentions
         clean_msg = re.sub(r'@[^\s]*', '', clean_msg)
         
-        # Remove common phrases that don't help search
         phrases_to_remove = [
             r'(hey|hello|hi)\s+(eva|bot|namibia\s*bot)',
             r'tell me about',
@@ -238,28 +273,26 @@ class EvaGeisesBot:
             if results:
                 best = results[0]
                 
-                # More natural response introduction
-                response = f"🤔 *About: {best['topic']}*\n\n"
+                # Natural response
+                response = f"*{best['topic']}*\n\n"
                 response += f"{best['content']}\n\n"
                 
-                # Show related topics if available
+                # Show related topics if available (max 2)
                 if len(results) > 1:
-                    response += "💡 *Related topics:*\n"
-                    for i, r in enumerate(results[1:3], 1):  # Show max 2 related
-                        response += f"{i}. {r['topic']}\n"
-                    response += "\n"
+                    response += "💡 *Related:* "
+                    response += ", ".join([r['topic'] for r in results[1:3]])
+                    response += "\n\n"
                 
-                response += "ℹ️ Use /menu for more topics or ask another question!"
+                response += "Need more? Use /menu! 🇳🇦"
                 return response
             else:
-                # Better fallback when no results
+                # Better fallback
                 return (
-                    "🤔 I don't have specific information about that in my knowledge base.\n\n"
-                    "💡 *You can:*\n"
-                    "• /menu - Browse all Namibia topics\n"
-                    "• /properties - View real estate listings\n"
-                    "• /topics - See all available topics\n\n"
-                    "Try asking about: tourism, wildlife, culture, geography, or properties!"
+                    "🤔 I don't have specific info on that.\n\n"
+                    "Try:\n"
+                    "• /menu - Browse topics\n"
+                    "• Ask about Etosha, Sossusvlei, or Wildlife\n"
+                    "• /properties - Real estate"
                 )
         
         elif response_type == "greeting":
@@ -267,8 +300,7 @@ class EvaGeisesBot:
             return (
                 f"{greeting}! 👋\n\n"
                 f"I'm Eva Geises, your Namibia expert! 🇳🇦\n\n"
-                f"Ask me about tourism, wildlife, culture, real estate, or anything Namibia-related!\n\n"
-                f"💡 Quick start: /menu"
+                f"Ask me anything or use /menu!"
             )
         
         elif response_type == "conversation_starter":
@@ -938,7 +970,7 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     if should_respond and response_type:
         logger.info(f"Eva responding: {message[:50]}... ({response_type})")
         eva.db.log_query(user.id, message)
-        response = eva.generate_response(message, response_type)
+        response = eva.generate_response(message, response_type, user_id=user.id)
         
         if response:
             # Natural delay before responding
@@ -972,13 +1004,13 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
     if not should_respond:
         response_type = "search"
     
-    response = eva.generate_response(message, response_type)
+    response = eva.generate_response(message, response_type, user_id=user.id)
     
     if response:
         await update.message.reply_text(response, parse_mode="Markdown")
     else:
         await update.message.reply_text(
-            "🤔 I'm not sure about that. Try /menu to explore topics or /help for guidance!",
+            "🤔 Not sure about that. What specific aspect of Namibia interests you? 😊",
             parse_mode="Markdown"
         )
 
