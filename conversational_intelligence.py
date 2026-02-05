@@ -472,3 +472,95 @@ class ConversationalIntelligence:
                 return question
         
         return "What specific aspect would you like to know about? 🤔"
+    
+    def format_natural_response(self, content: str, query: str, source_type: str) -> str:
+        """
+        Format response in natural, conversational way
+        
+        Args:
+            content: The response content to format
+            query: The original user query
+            source_type: Type of source (document, knowledge_base, etc)
+        
+        Returns:
+            Formatted natural response
+        """
+        # Clean up content
+        content = content.strip()
+        
+        # Remove document headers if source is document
+        if source_type == "document":
+            # Remove all-caps headings
+            lines = content.split('\n')
+            filtered_lines = []
+            for line in lines:
+                line_stripped = line.strip()
+                if line_stripped and not line_stripped.isupper() and len(line_stripped.split()) > 3:
+                    filtered_lines.append(line_stripped)
+            content = '\n'.join(filtered_lines)
+            
+            # Remove specific document headings
+            unwanted_starts = ["WELCOME TO", "INTRODUCTION", "TABLE OF CONTENTS", "CHAPTER", "SECTION"]
+            for unwanted in unwanted_starts:
+                if content.startswith(unwanted):
+                    # Find the first period and start from there
+                    period_idx = content.find('.')
+                    if period_idx > 0:
+                        content = content[period_idx + 1:].strip()
+        
+        # Add natural introduction based on query
+        query_lower = query.lower()
+        
+        if "self-drive" in query_lower or "road trip" in query_lower or "drive" in query_lower:
+            intro = "🚗 For self-drive adventures in Namibia:\n\n"
+        elif "itinerary" in query_lower or "plan" in query_lower or "schedule" in query_lower:
+            intro = "🗺️ Here's a suggested travel plan:\n\n"
+        elif "weather" in query_lower or "climate" in query_lower:
+            intro = "🌤️ About Namibia's weather:\n\n"
+        elif "visa" in query_lower or "requirements" in query_lower or "entry" in query_lower:
+            intro = "📋 Entry requirements:\n\n"
+        elif "currency" in query_lower or "money" in query_lower or "cash" in query_lower:
+            intro = "💰 Currency information:\n\n"
+        elif "?" in query:
+            # For questions, start naturally
+            if query_lower.startswith('what'):
+                intro = "🇳🇦 "
+            elif query_lower.startswith('where'):
+                intro = "📍 "
+            elif query_lower.startswith('when'):
+                intro = "📅 "
+            elif query_lower.startswith('why'):
+                intro = "🤔 "
+            elif query_lower.startswith('how'):
+                intro = "🔧 "
+            elif query_lower.startswith('who'):
+                intro = "👤 "
+            elif query_lower.startswith('which'):
+                intro = "🎯 "
+            else:
+                intro = ""
+        else:
+            intro = ""
+        
+        # Limit response length
+        if len(content) > 400:
+            # Find a good breaking point
+            sentences = re.split(r'(?<=[.!?])\s+', content)
+            limited_content = []
+            char_count = 0
+            
+            for sentence in sentences:
+                if char_count + len(sentence) < 350:
+                    limited_content.append(sentence)
+                    char_count += len(sentence)
+                else:
+                    break
+            
+            if limited_content:
+                content = ' '.join(limited_content)
+                if not content.endswith(('.', '!', '?')):
+                    content += '...'
+            else:
+                content = content[:350] + '...'
+        
+        return intro + content
