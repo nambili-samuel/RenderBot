@@ -25,7 +25,7 @@ class DocumentRAG:
         
         Args:
             github_repo_url: URL to GitHub repository with documents
-                           Format: https://github.com/username/repo/tree/main/knowledge
+                           Format: https://api.github.com/repos/username/repo/contents/documents
         """
         self.github_repo_url = github_repo_url or os.environ.get(
             "RAG_DOCUMENTS_URL",
@@ -240,14 +240,14 @@ class DocumentRAG:
             logger.error(f"❌ DOCX extraction error: {e}")
             return ""
     
-    def _create_chunks(self, text: str, filename: str, chunk_size: int = 500) -> List[Dict]:
+    def _create_chunks(self, text: str, filename: str, chunk_size: int = 300) -> List[Dict]:
         """
-        Split document into searchable chunks
+        Split document into SMART searchable chunks
         
         Args:
             text: Document text
             filename: Source filename
-            chunk_size: Words per chunk
+            chunk_size: Words per chunk (reduced for conciseness)
         
         Returns:
             List of chunk dictionaries
@@ -255,8 +255,8 @@ class DocumentRAG:
         # Clean text
         text = re.sub(r'\s+', ' ', text).strip()
         
-        # Split into sentences (basic)
-        sentences = re.split(r'[.!?]+', text)
+        # Better sentence splitting (preserves meaning)
+        sentences = re.split(r'(?<=[.!?])\s+', text)
         
         chunks = []
         current_chunk = []
@@ -264,39 +264,198 @@ class DocumentRAG:
         
         for sentence in sentences:
             sentence = sentence.strip()
-            if not sentence:
+            if not sentence or len(sentence.split()) < 3:
                 continue
             
             words = sentence.split()
             
-            # If adding this sentence exceeds chunk size, save current chunk
-            if current_word_count + len(words) > chunk_size and current_chunk:
+            # Create topic-based chunks
+            # Look for headings or new topics
+            is_heading = (
+                sentence.isupper() or 
+                len(sentence) < 50 or
+                re.match(r'^[A-Z][a-z]*(?:\s+[A-Z][a-z]*)*:$', sentence) or
+                re.match(r'^[0-9]+\.\s', sentence)
+            )
+            
+            # If we have a heading or starting new topic, save current chunk
+            if is_heading and current_chunk:
                 chunk_text = ' '.join(current_chunk)
-                
+                if current_word_count >= 50:  # Minimum chunk size
+                    chunks.append({
+                        'text': chunk_text,
+                        'filename': filename,
+                        'word_count': current_word_count,
+                        'keywords': self._extract_keywords(chunk_text),
+                        'is_summary': False
+                    })
+                current_chunk = []
+                current_word_count = 0
+            
+            # Add sentence to chunk
+            current_chunk.append(sentence)
+            current_word_count += len(words)
+            
+            # If chunk reaches size limit, save it
+            if current_word_count >= chunk_size:
+                chunk_text = ' '.join(current_chunk)
                 chunks.append({
                     'text': chunk_text,
                     'filename': filename,
                     'word_count': current_word_count,
-                    'keywords': self._extract_keywords(chunk_text)
+                    'keywords': self._extract_keywords(chunk_text),
+                    'is_summary': False
                 })
-                
                 current_chunk = []
                 current_word_count = 0
-            
-            current_chunk.append(sentence)
-            current_word_count += len(words)
         
         # Add remaining chunk
-        if current_chunk:
+        if current_chunk and current_word_count >= 30:
             chunk_text = ' '.join(current_chunk)
             chunks.append({
                 'text': chunk_text,
                 'filename': filename,
                 'word_count': current_word_count,
-                'keywords': self._extract_keywords(chunk_text)
+                'keywords': self._extract_keywords(chunk_text),
+                'is_summary': False
+            })
+        
+        # Create summary chunks for each document
+        if chunks:
+            # Extract first 2-3 chunks as summary
+            summary_text = ' '.join([chunk['text'] for chunk in chunks[:3]])
+            if len(summary_text) > 500:
+                summary_text = summary_text[:497] + "..."
+            
+            # Insert summary as first chunk
+            chunks.insert(0, {
+                'text': summary_text,
+                'filename': filename,
+                'word_count': len(summary_text.split()),
+                'keywords': self._extract_keywords(summary_text),
+                'is_summary': True
             })
         
         return chunks
+    
+    def _summarize_chunk(self, chunk_text: str, query: str = None) -> str:
+        """
+        Create concise summary of chunk based on query
+        """
+        if not query or len(chunk_text) < 200:
+            # Return the chunk as-is if short or no query
+            if len(chunk_text) > 400:
+                return self._smart_truncate(chunk_text, 400, query)
+            return chunk_text
+        
+        # Look for sentences that contain query words
+        sentences = re.split(r'(?<=[.!?])\s+', chunk_text)
+        query_words = query.lower().split()
+        
+        # Remove common stop words from query
+        stop_words = {
+            'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
+            'of', 'with', 'by', 'from', 'is', 'are', 'was', 'were', 'be', 'been',
+            'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+            'should', 'may', 'might', 'can', 'this', 'that', 'these', 'those',
+            'what', 'where', 'when', 'why', 'how', 'who', 'which', 'tell', 'me',
+            'about', 'know', 'please'
+        }
+        query_words = [w for w in query_words if w not in stop_words]
+        
+        relevant_sentences = []
+        for sentence in sentences:
+            sentence_lower = sentence.lower()
+            # Score sentence relevance
+            score = sum(1 for word in query_words if word in sentence_lower)
+            if score > 0:
+                relevant_sentences.append((score, sentence))
+        
+        # If we found relevant sentences, use them
+        if relevant_sentences:
+            # Sort by relevance score
+            relevant_sentences.sort(key=lambda x: x[0], reverse=True)
+            summary = ' '.join([sentence for _, sentence in relevant_sentences[:3]])  # Max 3 sentences
+            if len(summary) > 400:
+                summary = self._smart_truncate(summary, 400, query)
+            return summary
+        
+        # Fallback: first 2-3 sentences
+        summary = ' '.join(sentences[:3])
+        if len(summary) > 400:
+            summary = self._smart_truncate(summary, 400, query)
+        return summary
+    
+    def _smart_truncate(self, text: str, max_length: int = 400, query: str = None) -> str:
+        """
+        Smart truncation that preserves sentences and relevance
+        """
+        if len(text) <= max_length:
+            return text
+        
+        sentences = re.split(r'(?<=[.!?])\s+', text)
+        
+        # If query provided, find most relevant sentences
+        if query:
+            query_words = query.lower().split()
+            # Remove stop words
+            stop_words = {
+                'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
+                'of', 'with', 'by', 'from', 'is', 'are', 'was', 'were', 'be', 'been',
+                'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+                'should', 'may', 'might', 'can', 'this', 'that', 'these', 'those',
+                'what', 'where', 'when', 'why', 'how', 'who', 'which', 'tell', 'me',
+                'about', 'know', 'please'
+            }
+            query_words = [w for w in query_words if w not in stop_words]
+            
+            sentence_scores = []
+            
+            for i, sentence in enumerate(sentences):
+                score = 0
+                sentence_lower = sentence.lower()
+                for word in query_words:
+                    if word in sentence_lower:
+                        score += 1
+                sentence_scores.append((i, score, sentence))
+            
+            # Sort by relevance
+            sentence_scores.sort(key=lambda x: x[1], reverse=True)
+            
+            # Build from most relevant sentences
+            result = []
+            total_length = 0
+            
+            for i, score, sentence in sentence_scores:
+                if score > 0 and total_length + len(sentence) < max_length - 100:  # Leave room
+                    result.append(sentence)
+                    total_length += len(sentence)
+            
+            if result:
+                truncated = ' '.join(result)
+                if len(truncated) > max_length:
+                    truncated = truncated[:max_length-3] + "..."
+                return truncated
+        
+        # Fallback: take first sentences until limit
+        result = []
+        total_length = 0
+        
+        for sentence in sentences:
+            if total_length + len(sentence) < max_length - 50:  # Leave room for "..."
+                result.append(sentence)
+                total_length += len(sentence)
+            else:
+                break
+        
+        if result:
+            truncated = ' '.join(result)
+            if len(truncated) < len(text):
+                truncated += "..."
+            return truncated
+        
+        # Final fallback
+        return text[:max_length-3] + "..."
     
     def _extract_keywords(self, text: str) -> List[str]:
         """Extract keywords from text for better search"""
@@ -308,7 +467,9 @@ class DocumentRAG:
             'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
             'of', 'with', 'by', 'from', 'is', 'are', 'was', 'were', 'be', 'been',
             'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
-            'should', 'may', 'might', 'can', 'this', 'that', 'these', 'those'
+            'should', 'may', 'might', 'can', 'this', 'that', 'these', 'those',
+            'what', 'where', 'when', 'why', 'how', 'who', 'which', 'tell', 'me',
+            'about', 'know', 'please'
         }
         
         # Extract words
@@ -317,20 +478,20 @@ class DocumentRAG:
         # Filter stop words
         keywords = [w for w in words if w not in stop_words]
         
-        # Get unique keywords (keep top 20)
+        # Get unique keywords (keep top 15)
         unique_keywords = []
         seen = set()
         
         for word in keywords:
-            if word not in seen and len(unique_keywords) < 20:
+            if word not in seen and len(unique_keywords) < 15:
                 unique_keywords.append(word)
                 seen.add(word)
         
         return unique_keywords
     
-    def search_documents(self, query: str, limit: int = 5) -> List[Dict]:
+    def search_documents(self, query: str, limit: int = 2) -> List[Dict]:
         """
-        Search documents using RAG
+        Search documents using RAG with improved relevance scoring
         
         Args:
             query: Search query
@@ -342,53 +503,124 @@ class DocumentRAG:
         if not self.document_chunks:
             return []
         
-        query_lower = query.lower()
-        query_words = set(query_lower.split())
+        query_lower = query.lower().strip()
         
-        # Score each chunk
+        # Extract meaningful words from query
+        query_words = re.findall(r'\b[a-z]{3,}\b', query_lower)
+        
+        # Remove common stop words
+        stop_words = {
+            'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
+            'of', 'with', 'by', 'from', 'is', 'are', 'was', 'were', 'be', 'been',
+            'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+            'should', 'may', 'might', 'can', 'this', 'that', 'these', 'those',
+            'what', 'where', 'when', 'why', 'how', 'who', 'which', 'tell', 'me',
+            'about', 'know', 'please', 'could', 'would', 'thank', 'thanks',
+            'hello', 'hi', 'hey', 'eva', 'bot', 'namibia', 'namibian'
+        }
+        query_words = [w for w in query_words if w not in stop_words]
+        
+        if not query_words:
+            return []
+        
         scored_chunks = []
         
         for chunk in self.document_chunks:
             score = 0
             chunk_text_lower = chunk['text'].lower()
             
-            # Exact phrase match (highest score)
+            # 1. Exact phrase match (highest priority)
             if query_lower in chunk_text_lower:
-                score += 100
+                score += 1000
             
-            # Word matches
-            chunk_words = set(chunk_text_lower.split())
-            matching_words = query_words.intersection(chunk_words)
-            score += len(matching_words) * 10
+            # 2. All query words appear
+            all_words_match = all(word in chunk_text_lower for word in query_words)
+            if all_words_match and query_words:
+                score += 500
             
-            # Keyword matches
-            matching_keywords = set(chunk.get('keywords', [])).intersection(query_words)
-            score += len(matching_keywords) * 5
+            # 3. Most query words appear
+            matching_words = sum(1 for word in query_words if word in chunk_text_lower)
+            if matching_words > 0:
+                score += matching_words * 100
+                percentage_match = matching_words / len(query_words)
+                score += int(percentage_match * 200)
             
-            # Proximity bonus (words appear close together)
-            for word in query_words:
-                if word in chunk_text_lower:
-                    score += 2
+            # 4. Proximity bonus - words appear close together
+            chunk_words = chunk_text_lower.split()
+            for i in range(len(chunk_words) - len(query_words) + 1):
+                window = chunk_words[i:i + len(query_words)]
+                window_matches = sum(1 for word in query_words if word in window)
+                if window_matches == len(query_words):
+                    score += 300
+                    break
+            
+            # 5. Prefer summary chunks for overview
+            if chunk.get('is_summary'):
+                score += 150
+            
+            # 6. Prefer shorter, more concise chunks
+            word_count = len(chunk_text_lower.split())
+            if word_count < 100:
+                score += 50
+            elif word_count > 300:
+                score -= 30
+            
+            # 7. Question word matching
+            question_words = ['who', 'what', 'where', 'when', 'why', 'how', 'which']
+            for q_word in question_words:
+                if q_word in query_lower and q_word in chunk_text_lower:
+                    score += 50
+            
+            # 8. Remove headings penalty (avoid "WELCOME TO" headings)
+            if chunk_text_lower.startswith('welcome to') or chunk_text_lower.isupper():
+                score -= 100
             
             if score > 0:
                 scored_chunks.append({
                     'chunk': chunk,
-                    'score': score
+                    'score': score,
+                    'matching_words': matching_words
                 })
         
         # Sort by score
         scored_chunks.sort(key=lambda x: x['score'], reverse=True)
         
-        # Return top results
+        # Get top results and summarize
         results = []
         for item in scored_chunks[:limit]:
             chunk = item['chunk']
+            
+            # Summarize chunk based on query
+            summarized_text = self._summarize_chunk(chunk['text'], query)
+            
+            # Clean up the text - remove headings
+            lines = summarized_text.split('\n')
+            clean_lines = []
+            for line in lines:
+                line = line.strip()
+                if line and not line.startswith('WELCOME') and not line.isupper():
+                    clean_lines.append(line)
+            
+            summarized_text = '\n'.join(clean_lines)
+            
+            # Ensure we don't return too much text
+            if len(summarized_text) > 500:
+                summarized_text = self._smart_truncate(summarized_text, 500, query)
+            
+            # Remove document headings
+            summarized_text = re.sub(r'^WELCOME TO.*?\n', '', summarized_text, flags=re.IGNORECASE)
+            summarized_text = re.sub(r'^INTRODUCTION.*?\n', '', summarized_text, flags=re.IGNORECASE)
+            summarized_text = summarized_text.strip()
+            
             results.append({
-                'text': chunk['text'],
+                'text': summarized_text,
                 'filename': chunk['filename'],
                 'score': item['score'],
-                'source': 'RAG Document',
-                'type': 'document_chunk'
+                'source': 'document',
+                'type': 'document_chunk',
+                'is_summary': chunk.get('is_summary', False),
+                'original_length': len(chunk['text']),
+                'summarized_length': len(summarized_text)
             })
         
         return results
@@ -398,7 +630,7 @@ class DocumentRAG:
         for doc in self.documents:
             if doc['filename'] == filename:
                 # Create summary
-                content_preview = doc['content'][:500] + "..." if len(doc['content']) > 500 else doc['content']
+                content_preview = doc['content'][:300] + "..." if len(doc['content']) > 300 else doc['content']
                 
                 return {
                     'filename': doc['filename'],
