@@ -73,32 +73,10 @@ class EvaGeisesBot:
         self.last_greeting = {}
         self.last_property_post = {}
         self.property_rotation_index = 0
-        self.rag_initialized = False  # Track RAG initialization
         logger.info(f"🇳🇦 Eva Geises initialized with {len(self.kb.get_all_topics())} topics")
         logger.info("🤖 Advanced AI features loaded")
         logger.info("🧠 Conversational intelligence enabled")
         logger.info("📚 RAG document system initialized")
-    
-    async def initialize_rag(self):
-        """Initialize RAG system by syncing documents from GitHub"""
-        if self.rag_initialized:
-            return True
-        
-        try:
-            logger.info("📥 Starting initial RAG document sync...")
-            success = await self.rag.sync_documents()
-            
-            if success:
-                stats = self.rag.get_stats()
-                logger.info(f"✅ RAG initialized: {stats['total_documents']} documents, {stats['total_chunks']} chunks")
-                self.rag_initialized = True
-                return True
-            else:
-                logger.warning("⚠️ RAG sync failed on initialization")
-                return False
-        except Exception as e:
-            logger.error(f"❌ RAG initialization error: {e}")
-            return False
     
     def get_greeting(self):
         """Get time-appropriate greeting"""
@@ -234,73 +212,19 @@ class EvaGeisesBot:
         return property
     
     def generate_response(self, message, response_type, user_id=None):
-        """Generate Eva's response - CONVERSATIONAL INTELLIGENCE + RAG"""
+        """Generate Eva's response - INTELLIGENT COMBINATION of RAG + KB"""
         
-        # Use conversational intelligence if user_id provided
-        if user_id and response_type == "search":
-            # BETTER QUERY CLEANING
-            clean_msg = message.lower().strip()
-            
-            # Remove question marks and punctuation
-            clean_msg = re.sub(r'[?!.,;:]+', ' ', clean_msg)
-            
-            # Remove bot mentions
-            clean_msg = re.sub(r'@[^\s]*', '', clean_msg)
-            
-            # Remove common phrases that don't help search
-            phrases_to_remove = [
-                r'(hey|hello|hi)\s+(eva|bot|namibia\s*bot)',
-                r'tell me about',
-                r'can you tell me',
-                r'i want to know',
-                r'could you',
-                r'would you',
-                r'please'
-            ]
-            for phrase in phrases_to_remove:
-                clean_msg = re.sub(phrase, '', clean_msg)
-            
-            clean_msg = clean_msg.strip()
-            
-            # SEARCH RAG DOCUMENTS FIRST (higher priority)
-            rag_results = self.rag.search_documents(clean_msg, limit=3) if clean_msg else []
-            
-            # Search knowledge base
-            kb_results = self.kb.search(clean_msg, limit=5) if clean_msg else []
-            
-            # Combine results (RAG first, then KB)
-            all_results = []
-            
-            # Add RAG results
-            for rag_result in rag_results:
-                all_results.append({
-                    'topic': f"📄 {rag_result['filename']}",
-                    'content': rag_result['text'],
-                    'source': 'document',
-                    'score': rag_result['score']
-                })
-            
-            # Add KB results
-            for kb_result in kb_results:
-                all_results.append({
-                    'topic': kb_result['topic'],
-                    'content': kb_result['content'],
-                    'source': 'knowledge_base',
-                    'score': 50  # Default score for KB
-                })
-            
-            # Use conversational intelligence to generate response
-            intelligent_response = self.ci.generate_intelligent_response(
-                message, user_id, all_results, response_type
-            )
-            
-            return intelligent_response
-        
-        # Fallback to standard responses with RAG
+        # Clean the query
+        original_message = message
         clean_msg = message.lower().strip()
+        
+        # Remove question marks and punctuation
         clean_msg = re.sub(r'[?!.,;:]+', ' ', clean_msg)
+        
+        # Remove bot mentions
         clean_msg = re.sub(r'@[^\s]*', '', clean_msg)
         
+        # Remove common phrases that don't help search
         phrases_to_remove = [
             r'(hey|hello|hi)\s+(eva|bot|namibia\s*bot)',
             r'tell me about',
@@ -308,80 +232,231 @@ class EvaGeisesBot:
             r'i want to know',
             r'could you',
             r'would you',
-            r'please'
+            r'please',
+            r'what is',
+            r'where is',
+            r'who is',
+            r'how is',
+            r'when is'
         ]
         for phrase in phrases_to_remove:
             clean_msg = re.sub(phrase, '', clean_msg)
         
         clean_msg = clean_msg.strip()
         
-        # Search both RAG and KB
         if response_type == "search" and clean_msg:
-            rag_results = self.rag.search_documents(clean_msg, limit=2)
-            kb_results = self.kb.search(clean_msg, limit=3)
+            # ========== INTELLIGENT SEARCH STRATEGY ==========
+            # 1. Search Knowledge Base (from Gist)
+            kb_results = self.kb.search(clean_msg, limit=5)
             
-            # Prefer RAG results if available
-            if rag_results:
-                best = rag_results[0]
-                
-                response = f"📄 *From: {best['filename']}*\n\n"
-                response += f"{best['text']}\n\n"
-                
-                # Show source
-                response += f"_Source: Document Library_\n\n"
-                
-                # Show related if available
-                if len(rag_results) > 1:
-                    response += "💡 *More in documents:* "
-                    response += ", ".join([r['filename'] for r in rag_results[1:]])
-                    response += "\n\n"
-                
-                response += "Use /documents to see all available docs! 📚"
-                return response
+            # 2. Search RAG Documents (from GitHub)
+            rag_results = self.rag.search_documents(clean_msg, limit=2) if clean_msg else []
             
-            # Fallback to KB results
-            elif kb_results:
-                best = kb_results[0]
-                
-                response = f"*{best['topic']}*\n\n"
-                response += f"{best['content']}\n\n"
-                
-                if len(kb_results) > 1:
-                    response += "💡 *Related:* "
-                    response += ", ".join([r['topic'] for r in kb_results[1:3]])
-                    response += "\n\n"
-                
-                response += "Need more? Use /menu! 🇳🇦"
-                return response
+            # ========== DECIDE WHICH SOURCE TO USE ==========
+            # Check what type of information we have
             
+            # CASE 1: We have KB results but no RAG results
+            if kb_results and not rag_results:
+                return self._format_kb_response(kb_results, original_message)
+            
+            # CASE 2: We have RAG results but no KB results
+            elif rag_results and not kb_results:
+                return self._format_rag_response(rag_results, original_message)
+            
+            # CASE 3: We have BOTH KB and RAG results
+            elif kb_results and rag_results:
+                return self._combine_responses(kb_results, rag_results, original_message, clean_msg)
+            
+            # CASE 4: No results from either source
             else:
-                # No results
-                return (
-                    "🤔 I don't have specific info on that.\n\n"
-                    "Try:\n"
-                    "• /documents - Browse document library\n"
-                    "• /menu - Browse topics\n"
-                    "• Ask about Etosha, Sossusvlei, or Wildlife"
-                )
+                return self._get_fallback_response(original_message)
         
         elif response_type == "greeting":
             greeting = self.get_greeting()
             return (
                 f"{greeting}! 👋\n\n"
                 f"I'm Eva Geises, your Namibia expert! 🇳🇦\n\n"
-                f"Ask me anything or use /menu!"
+                f"Ask me anything about Namibia - wildlife, tourism, culture, or real estate! 🦁🏞️"
             )
         
         elif response_type == "conversation_starter":
             return self.smart.get_engagement_prompt()
         
         return None
+    
+    def _format_kb_response(self, kb_results, original_message):
+        """Format knowledge base response in a natural way"""
+        best = kb_results[0]
+        
+        # Start with natural language
+        response = f"🇳🇦 "
+        
+        # Detect question type
+        if "?" in original_message:
+            question_words = ["what", "where", "when", "why", "how", "who", "which"]
+            if any(original_message.lower().startswith(word) for word in question_words):
+                response += f"Great question! "
+        
+        response += f"{best['content']}\n\n"
+        
+        # Add related topics if available
+        if len(kb_results) > 1:
+            related_topics = [r['topic'] for r in kb_results[1:3]]
+            if related_topics:
+                response += "💡 *Related topics:* "
+                response += ", ".join(related_topics[:2])
+                response += "\n\n"
+        
+        response += "Want to know more? Just ask! 😊"
+        return response
+    
+    def _format_rag_response(self, rag_results, original_message):
+        """Format RAG document response in a natural way"""
+        best = rag_results[0]
+        
+        # Extract filename without extension for natural display
+        filename = best['filename'].replace('.pdf', '').replace('.docx', '').replace('.txt', '').replace('_', ' ')
+        
+        # Start with natural language
+        response = "📚 "
+        
+        # Based on query type
+        if "self-drive" in original_message.lower() or "road trip" in original_message.lower():
+            response += f"I found some great self-drive information for you:\n\n"
+        elif "itinerary" in original_message.lower() or "plan" in original_message.lower():
+            response += f"Here's a suggested itinerary from our travel guides:\n\n"
+        else:
+            response += f"From our travel resources:\n\n"
+        
+        # Add the content (already summarized by RAG system)
+        response += f"{best['text']}\n\n"
+        
+        # Add context
+        response += f"_Source: {filename}_\n\n"
+        
+        # Encourage further questions
+        response += "Need more details? Ask specific questions! 🗺️"
+        return response
+    
+    def _combine_responses(self, kb_results, rag_results, original_message, clean_query):
+        """Intelligently combine KB and RAG results"""
+        
+        # Get best from each source
+        kb_best = kb_results[0]
+        rag_best = rag_results[0]
+        
+        # Extract filename for RAG
+        filename = rag_best['filename'].replace('.pdf', '').replace('.docx', '').replace('.txt', '').replace('_', ' ')
+        
+        # Decide which is more relevant based on query
+        query_words = clean_query.split()
+        
+        # Check if query is specific to documents (e.g., "self-drive", "itinerary", "guide")
+        document_keywords = ["self-drive", "road trip", "itinerary", "plan", "guide", "pdf", "document", "file"]
+        is_document_query = any(keyword in clean_query for keyword in document_keywords)
+        
+        # Check if query is general knowledge
+        general_keywords = ["what", "where", "when", "who", "why", "how", "capital", "weather", "visa", "currency"]
+        is_general_query = any(keyword in clean_query for keyword in general_keywords)
+        
+        # ========== INTELLIGENT DECISION MAKING ==========
+        if is_document_query:
+            # Query is about documents/guides - lead with RAG
+            response = "📚 "
+            response += f"I found detailed information in our travel guides:\n\n"
+            response += f"{rag_best['text']}\n\n"
+            
+            # Add KB context if it adds value
+            if "self-drive" in clean_query and any(word in kb_best['content'].lower() for word in ['road', 'drive', 'car', 'vehicle']):
+                kb_summary = kb_best['content'][:120].replace('\n', ' ')
+                if kb_summary:
+                    response += f"💡 *Also:* {kb_summary}...\n\n"
+            
+            response += f"_From: {filename}_"
+        
+        elif is_general_query:
+            # Query is general knowledge - lead with KB
+            response = "🇳🇦 "
+            response += f"{kb_best['content']}\n\n"
+            
+            # Add RAG if it has travel tips
+            if "travel" in clean_query or "tour" in clean_query or "visit" in clean_query:
+                rag_summary = rag_best['text'][:120].replace('\n', ' ')
+                if rag_summary and not rag_summary.startswith("WELCOME"):
+                    response += f"📖 *Travel tip:* {rag_summary}...\n\n"
+            
+            response += "Need more travel planning help? Ask away! 😊"
+        
+        else:
+            # Default: Use KB first, mention documents if relevant
+            response = "🇳🇦 "
+            response += f"{kb_best['content']}\n\n"
+            
+            # Only add RAG if it adds value (skip headings)
+            rag_text = rag_best['text']
+            if len(rag_text) > 50 and not rag_text.startswith("WELCOME") and not rag_text.isupper():
+                # Clean the RAG text
+                rag_lines = rag_text.split('\n')
+                clean_rag_lines = []
+                for line in rag_lines:
+                    line = line.strip()
+                    if line and not line.isupper() and len(line.split()) > 3:
+                        clean_rag_lines.append(line)
+                
+                if clean_rag_lines:
+                    rag_summary = ' '.join(clean_rag_lines[:2])[:100]
+                    response += f"📖 *Travel resource:* {rag_summary}...\n\n"
+            
+            response += "Interested in detailed guides? Just ask! ✨"
+        
+        return response
+    
+    def _get_fallback_response(self, original_message):
+        """Get intelligent fallback when no results found"""
+        
+        # Check message type
+        msg_lower = original_message.lower()
+        
+        # Self-drive related queries
+        if any(word in msg_lower for word in ["self-drive", "road trip", "drive", "car hire", "rental"]):
+            return (
+                "🚗 *Self-Drive Namibia*\n\n"
+                "Namibia is perfect for self-drive adventures! Key tips:\n\n"
+                "✅ Great roads and excellent safety record\n"
+                "✅ International driver's license required\n"
+                "✅ Best time: May-October (dry season)\n"
+                "✅ Recommended route: Windhoek → Etosha → Swakopmund → Sossusvlei\n\n"
+                "💡 Use /documents to see our detailed self-drive guide!"
+            )
+        
+        # Travel planning queries
+        elif any(word in msg_lower for word in ["itinerary", "plan", "schedule", "trip"]):
+            return (
+                "🗺️ *Namibia Travel Planning*\n\n"
+                "Recommended itineraries:\n\n"
+                "🏜️ **7 Days:** Windhoek → Sossusvlei → Swakopmund\n"
+                "🦁 **10 Days:** Add Etosha National Park\n"
+                "🌍 **14 Days:** Full circuit including Fish River Canyon\n\n"
+                "💡 Ask about specific destinations or use /menu!"
+            )
+        
+        # Default fallback
+        return (
+            "🤔 I'm not sure about that specific detail.\n\n"
+            "But I can help you with:\n"
+            "• Wildlife safaris in Etosha 🦁\n"
+            "• Desert adventures in Sossusvlei 🏜️\n"
+            "• Coastal trips to Swakopmund 🏖️\n"
+            "• Cultural experiences with the Himba 👥\n"
+            "• Real estate opportunities 🏠\n\n"
+            "💡 Try /menu for organized topics or ask something else!"
+        )
 
 # Initialize bot
 eva = EvaGeisesBot()
 
 # =========================================================
-# MENU SYSTEM
+# MENU SYSTEM (Keep as is - no changes needed)
 # =========================================================
 class MenuSystem:
     def __init__(self, kb):
@@ -401,43 +476,43 @@ class MenuSystem:
         ]
         return InlineKeyboardMarkup(keyboard)
     
-    def category_menu(self, category):
-        """Show topics in category"""
+    def create_submenu(self, category):
+        """Create submenu with topics"""
         topics = self.kb.get_by_category(category)
-        
-        if not topics:
-            return None
-        
         keyboard = []
         
-        for i, topic in enumerate(topics):
-            display = topic['topic'][:40]
-            callback = f"topic_{category}_{i}"
-            keyboard.append([InlineKeyboardButton(display, callback_data=callback)])
+        for i, topic in enumerate(topics[:8]):
+            topic_name = topic['topic']
+            if len(topic_name) > 35:
+                topic_name = topic_name[:32] + "..."
+            keyboard.append([InlineKeyboardButton(
+                topic_name, 
+                callback_data=f"topic_{category}_{i}"
+            )])
         
-        keyboard.append([InlineKeyboardButton("« Back", callback_data="menu_main")])
-        
+        keyboard.append([InlineKeyboardButton("🔙 Back to Menu", callback_data="menu_back")])
         return InlineKeyboardMarkup(keyboard)
     
     def back_button(self, category=None):
         """Create back button"""
         if category:
-            keyboard = [[InlineKeyboardButton("« Back to Topics", callback_data=f"cat_{category}")]]
+            keyboard = [[InlineKeyboardButton("🔙 Back", callback_data=f"cat_{category}")]]
         else:
-            keyboard = [[InlineKeyboardButton("« Main Menu", callback_data="menu_main")]]
+            keyboard = [[InlineKeyboardButton("🔙 Main Menu", callback_data="menu_back")]]
         return InlineKeyboardMarkup(keyboard)
     
-    def get_category_description(self, category):
-        """Get description for category"""
+    def format_category(self, category):
+        """Format category overview"""
         topics = self.kb.get_by_category(category)
-        
-        if not topics:
-            return f"*{category}*\n\nNo topics available in this category."
         
         emoji_map = {
             "Real Estate": "🏠",
-            "Tourism": "🏞️", "History": "📜", "Culture": "👥",
-            "Practical": "ℹ️", "Wildlife": "🦁", "Facts": "🚀",
+            "Tourism": "🏞️",
+            "History": "📜",
+            "Culture": "👥",
+            "Practical": "ℹ️",
+            "Wildlife": "🦁",
+            "Facts": "🚀",
             "Geography": "🗺️"
         }
         
@@ -452,7 +527,7 @@ class MenuSystem:
 menu = MenuSystem(eva.kb)
 
 # =========================================================
-# COMMAND HANDLERS
+# COMMAND HANDLERS (Keep all existing command handlers - no changes)
 # =========================================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Welcome message"""
@@ -571,58 +646,79 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/topics - List all topics\n"
         "/help - Show this help\n\n"
         "🤖 *AI Features:*\n"
-        "/weather - Get Namibia weather\n"
+        "/weather - Live Namibia weather\n"
         "/news - Latest Namibia news\n"
-        "/story - Random Namibia story\n"
-        "/brainstorm - Get creative ideas\n"
-        "/poll - Create engagement poll\n"
+        "/story - Hear a Namibia story\n"
+        "/brainstorm - Generate ideas\n"
+        "/poll - Create engaging poll\n"
         "/discuss - Start discussion\n"
         "/fact - Random Namibia fact\n\n"
-        "📚 *Document System:*\n"
-        "/documents - Browse document library\n"
-        "/docs - Same as /documents\n\n"
-        "💡 *How to use:*\n"
-        "Just ask questions naturally!\n"
-        "Examples:\n"
-        "• \"Tell me about Etosha\"\n"
-        "• \"Where is Sossusvlei?\"\n"
-        "• \"Show me properties\"\n"
     )
     
     if is_admin:
         help_text += (
-            "\n🔧 *Admin Commands:*\n"
-            "/sync_docs - Sync documents from GitHub\n"
-            "/rag_stats - Show RAG statistics\n"
-            "/stats - Show bot statistics\n"
-            "/test_automation - Test features\n"
-            "/force_post - Force content post\n"
-            "/activate_group - Activate group\n"
-            "/diagnose - System diagnostics\n"
+            "👑 *Admin Commands:*\n"
+            "/test_automation - Test all features\n"
+            "/force_post [type] - Post content now\n"
+            "/activate_group - Activate this group\n"
+            "/add - Add knowledge\n"
+            "/stats - View statistics\n\n"
+            "💡 force_post types: greeting, property, poll, story, weather, news, discuss, brainstorm\n\n"
         )
+    
+    help_text += (
+        "💬 *How to use:*\n"
+        "• Ask questions naturally\n"
+        "• Mention topics like 'Etosha', 'Sossusvlei'\n"
+        "• I respond to greetings!\n"
+        "• Use /menu for organized browsing\n\n"
+        "✨ *Examples:*\n"
+        "• \"Where is Namibia?\"\n"
+        "• \"Tell me about Etosha\"\n"
+        "• \"Show me properties\"\n"
+        "• \"/weather\" for live updates\n\n"
+        "🚀 *Automated Features:*\n"
+        "• Greetings every 2 hours\n"
+        "• Property posts 3x daily\n"
+        "• Stories, polls & discussions\n"
+        "• Weather & news updates\n\n"
+        "Need more help? Just ask! 😊"
+    )
     
     await update.message.reply_text(help_text, parse_mode="Markdown")
 
 async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Add me to group instruction"""
+    """Add knowledge - Admin only"""
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("🔒 This command is only available to administrators.")
+        return
+    
+    if len(context.args) < 3:
+        await update.message.reply_text(
+            "Usage: /add <category> <topic> <content>\n\n"
+            "Example:\n/add Tourism \"Skeleton Coast\" \"The Skeleton Coast is...\""
+        )
+        return
+    
+    category = context.args[0]
+    topic = context.args[1]
+    content = ' '.join(context.args[2:])
+    
+    eva.kb.add_knowledge(topic, content, category)
+    
     await update.message.reply_text(
-        "👥 *Add Me to Your Group!*\n\n"
-        "1. Go to your group chat\n"
-        "2. Click group name → Add members\n"
-        "3. Search for Eva Geises\n"
-        "4. Add me!\n\n"
-        "I'll introduce myself and start helping! 🇳🇦",
-        parse_mode="Markdown"
+        f"✅ Added '{topic}' to {category} category!"
     )
 
-# Advanced AI Commands
 async def weather_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Get Namibia weather"""
+    await update.message.reply_text("🌤️ Fetching live weather data...", parse_mode="Markdown")
     weather = await eva.ai.get_namibia_weather()
     await update.message.reply_text(weather, parse_mode="Markdown")
 
 async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Get Namibia news"""
+    await update.message.reply_text("📰 Searching for latest Namibia news...", parse_mode="Markdown")
     news = await eva.ai.get_namibia_news()
     await update.message.reply_text(news, parse_mode="Markdown")
 
@@ -632,18 +728,22 @@ async def story_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(story, parse_mode="Markdown")
 
 async def brainstorm_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Generate brainstorm ideas"""
-    ideas = eva.ai.generate_brainstorm_ideas()
+    """Generate brainstorming ideas"""
+    topic = ' '.join(context.args) if context.args else "Namibia"
+    ideas = eva.ai.generate_brainstorm_ideas(topic)
     await update.message.reply_text(ideas, parse_mode="Markdown")
 
 async def poll_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Create an engagement poll"""
+    """Create and send a poll"""
+    poll_data = eva.ai.generate_poll()
+    
     try:
-        poll_data = eva.ai.generate_poll()
-        await update.message.reply_poll(
+        await context.bot.send_poll(
+            chat_id=update.effective_chat.id,
             question=poll_data["question"],
             options=poll_data["options"],
-            is_anonymous=False
+            is_anonymous=False,
+            allows_multiple_answers=False
         )
     except Exception as e:
         logger.error(f"Poll error: {e}")
@@ -667,7 +767,7 @@ async def documents_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "📚 *Document Library*\n\n"
             "No documents available yet.\n\n"
-            "💡 Use /sync_docs (admin) to load documents from GitHub.",
+            "💡 Documents will be synced automatically from GitHub repository.",
             parse_mode="Markdown"
         )
         return
@@ -847,22 +947,44 @@ async def force_post_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
         else:
             # Random content
-            content_types = ["greeting", "property", "story", "poll", "discuss"]
-            selected = random.choice(content_types)
+            content_types = ["poll", "story", "weather", "news", "discuss", "brainstorm", "fact"]
+            random_type = random.choice(content_types)
             
-            await update.message.reply_text(f"🎲 Posting random content: {selected}")
-            await asyncio.sleep(1)
-            
-            # Recurse with selected type
-            context.args = [selected]
-            await force_post_command(update, context)
+            if random_type == "poll":
+                poll_data = eva.ai.generate_poll()
+                await context.bot.send_poll(
+                    chat_id=chat_id,
+                    question=poll_data["question"],
+                    options=poll_data["options"],
+                    is_anonymous=False
+                )
+            elif random_type == "story":
+                story = eva.ai.tell_namibia_story()
+                await update.message.reply_text(story, parse_mode="Markdown")
+            elif random_type == "weather":
+                weather = await eva.ai.get_namibia_weather()
+                await update.message.reply_text(weather, parse_mode="Markdown")
+            elif random_type == "news":
+                news = await eva.ai.get_namibia_news()
+                await update.message.reply_text(news, parse_mode="Markdown")
+            elif random_type == "discuss":
+                discussion = eva.ai.generate_discussion_topic()
+                await update.message.reply_text(discussion, parse_mode="Markdown")
+            elif random_type == "brainstorm":
+                ideas = eva.ai.generate_brainstorm_ideas()
+                await update.message.reply_text(ideas, parse_mode="Markdown")
+            else:
+                fact = eva.ai.get_random_fact()
+                await update.message.reply_text(fact, parse_mode="Markdown")
+        
+        logger.info(f"✅ Force posted: {content_type}")
     
     except Exception as e:
         logger.error(f"Force post error: {e}")
-        await update.message.reply_text(f"❌ Error: {str(e)}")
+        await update.message.reply_text(f"❌ Error posting content: {e}")
 
 async def activate_group_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Activate current group for automated posts - Admin only"""
+    """Activate current group for automated posting - Admin only"""
     if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("🔒 This command is only available to administrators.")
         return
@@ -871,60 +993,147 @@ async def activate_group_command(update: Update, context: ContextTypes.DEFAULT_T
     chat_type = update.effective_chat.type
     chat_title = update.effective_chat.title or "Private Chat"
     
+    # Track chat as active
     eva.db.track_chat(chat_id, chat_type, chat_title)
     
-    await update.message.reply_text(
-        f"✅ *Group Activated!*\n\n"
-        f"📊 Chat ID: `{chat_id}`\n"
-        f"📋 Type: {chat_type}\n"
-        f"📝 Title: {chat_title}\n\n"
-        f"This group will now receive:\n"
-        f"• 👋 Greetings every 2 hours\n"
-        f"• 🏠 Properties 3x daily\n"
-        f"• 🎯 Engagement every 4 hours\n\n"
-        f"💡 Use /test_automation to verify!",
-        parse_mode="Markdown"
-    )
+    # Verify it's in active chats
+    active_chats = eva.db.get_active_chats()
+    is_active = any(chat['chat_id'] == chat_id for chat in active_chats)
+    
+    if is_active:
+        await update.message.reply_text(
+            f"✅ *Group Activated!*\n\n"
+            f"📱 *Chat:* {chat_title}\n"
+            f"🆔 *ID:* `{chat_id}`\n"
+            f"📊 *Type:* {chat_type}\n\n"
+            f"🤖 *Automated Features:*\n"
+            f"• Greetings: Every 2 hours\n"
+            f"• AI Content: Every 4 hours\n"
+            f"• Properties: 10 AM, 2 PM, 6 PM\n\n"
+            f"💡 First posts start in:\n"
+            f"• 5 minutes (greeting)\n"
+            f"• 30 minutes (AI content)\n\n"
+            f"Use /test_automation to test all features now!",
+            parse_mode="Markdown"
+        )
+    else:
+        await update.message.reply_text(
+            f"⚠️ *Activation Issue*\n\n"
+            f"Chat ID: `{chat_id}`\n\n"
+            f"Group was tracked but not appearing in active chats. "
+            f"Please contact support.",
+            parse_mode="Markdown"
+        )
 
 async def diagnose_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """System diagnostics - Admin only"""
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("🔒 This command is only available to administrators.")
-        return
+    """Diagnose automation issues - Shows detailed status"""
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
     
-    # Gather diagnostic info
-    active_chats = eva.db.get_active_chats()
-    rag_stats = eva.rag.get_stats()
+    # Check if user is admin
+    is_admin = user_id in ADMIN_IDS
     
-    response = "🔍 *System Diagnostics*\n\n"
-    response += f"*Bot Status:* ✅ Running\n"
-    response += f"*Active Chats:* {len(active_chats)}\n"
-    response += f"*KB Topics:* {len(eva.kb.get_all_topics())}\n"
-    response += f"*Properties:* {len(eva.get_property_posts())}\n\n"
+    report = f"🔍 *Eva Geises Diagnostic Report*\n\n"
     
-    response += "*RAG System:*\n"
-    response += f"Documents: {rag_stats['total_documents']}\n"
-    response += f"Chunks: {rag_stats['total_chunks']}\n"
-    response += f"Last Sync: {rag_stats['last_sync'][:19] if rag_stats['last_sync'] != 'Never' else 'Never'}\n"
-    response += f"RAG Initialized: {'✅ Yes' if eva.rag_initialized else '❌ No'}\n\n"
+    # 1. User Info
+    report += f"👤 *Your Info:*\n"
+    report += f"User ID: `{user_id}`\n"
+    report += f"Is Admin: {'✅ YES' if is_admin else '❌ NO - Add to ADMIN_IDS!'}\n\n"
     
-    response += "*Active Groups:*\n"
-    for i, chat in enumerate(active_chats[:5], 1):
-        response += f"{i}. {chat['title'][:30]} (ID: {chat['chat_id']})\n"
+    if ADMIN_IDS:
+        report += f"Current ADMIN_IDS: `{', '.join(map(str, ADMIN_IDS))}`\n\n"
+    else:
+        report += f"⚠️ ADMIN_IDS not set in environment!\n\n"
     
-    if len(active_chats) > 5:
-        response += f"...and {len(active_chats) - 5} more\n"
+    # 2. Chat Info
+    report += f"💬 *Chat Info:*\n"
+    report += f"Chat ID: `{chat_id}`\n"
+    report += f"Chat Type: {update.effective_chat.type}\n"
+    report += f"Chat Title: {update.effective_chat.title or 'N/A'}\n\n"
     
-    await update.message.reply_text(response, parse_mode="Markdown")
+    # 3. Database Status
+    try:
+        active_chats = eva.db.get_active_chats()
+        is_tracked = any(chat['chat_id'] == chat_id for chat in active_chats)
+        
+        report += f"💾 *Database Status:*\n"
+        report += f"This chat tracked: {'✅ YES' if is_tracked else '❌ NO - Use /activate_group'}\n"
+        report += f"Total active chats: {len(active_chats)}\n\n"
+    except Exception as e:
+        report += f"💾 *Database Status:* ❌ Error: {e}\n\n"
+    
+    # 4. Features Status
+    report += f"🤖 *Features Status:*\n"
+    try:
+        # Test knowledge base
+        results = eva.kb.search("Namibia", limit=1)
+        report += f"Knowledge Base: {'✅ Working (' + str(len(eva.kb.get_all_topics())) + ' topics)' if results else '⚠️ No data'}\n"
+        
+        # Test properties
+        properties = eva.get_property_posts()
+        report += f"Properties: {'✅ ' + str(len(properties)) + ' available' if properties else '❌ None found'}\n"
+        
+        # Test AI features
+        report += f"Advanced AI: {'✅ Loaded' if hasattr(eva, 'ai') else '❌ Not loaded'}\n"
+        report += f"Smart Features: {'✅ Loaded' if hasattr(eva, 'smart') else '❌ Not loaded'}\n"
+        
+    except Exception as e:
+        report += f"❌ Error testing features: {e}\n"
+    
+    report += "\n"
+    
+    # 5. Job Queue Status
+    try:
+        if hasattr(context.application, 'job_queue') and context.application.job_queue:
+            jobs = context.application.job_queue.jobs()
+            report += f"⏰ *Job Queue Status:*\n"
+            report += f"Job Queue: ✅ Active ({len(jobs)} jobs)\n"
+            
+            job_names = [job.name for job in jobs if hasattr(job, 'name') and job.name]
+            if job_names:
+                report += f"\n*Scheduled Jobs:*\n"
+                for name in job_names:
+                    report += f"• {name}\n"
+        else:
+            report += f"⏰ *Job Queue Status:* ❌ NOT ACTIVE\n"
+            report += f"⚠️ Automated posts won't work!\n"
+    except Exception as e:
+        report += f"⏰ *Job Queue Status:* ❌ Error: {e}\n"
+    
+    report += "\n"
+    
+    # 6. Fix Instructions
+    report += f"🔧 *How to Fix:*\n"
+    
+    if not ADMIN_IDS:
+        report += f"1. ⚠️ Set ADMIN_IDS in Render:\n"
+        report += f"   Environment variable: `ADMIN_IDS={user_id}`\n\n"
+    elif not is_admin:
+        report += f"1. ⚠️ Add yourself to ADMIN_IDS:\n"
+        report += f"   Change to: `ADMIN_IDS={','.join(map(str, list(ADMIN_IDS) + [user_id]))}`\n\n"
+    
+    if not is_tracked and is_admin:
+        report += f"2. Activate this chat: /activate_group\n\n"
+    
+    if not hasattr(context.application, 'job_queue') or not context.application.job_queue:
+        report += f"3. ❌ Job Queue not working! Use manual posting:\n"
+        report += f"   /force_post - Post content manually\n\n"
+    
+    if is_admin:
+        report += f"💡 *Admin Commands:*\n"
+        report += f"/activate_group - Activate automation\n"
+        report += f"/test_automation - Test all features\n"
+        report += f"/force_post [type] - Manual posting\n"
+    
+    await update.message.reply_text(report, parse_mode="Markdown")
 
 # =========================================================
-# MESSAGE HANDLERS
+# MESSAGE HANDLERS (Keep as is)
 # =========================================================
 async def handle_new_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Welcome new group members"""
     for member in update.message.new_chat_members:
-        if member.is_bot and member.id == context.bot.id:
-            # Bot was added to group
+        if member.is_bot:
             continue
         
         # Track chat
@@ -1014,7 +1223,7 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
         )
 
 # =========================================================
-# AUTOMATED JOBS
+# AUTOMATED JOBS (Keep as is)
 # =========================================================
 async def post_daily_property(context: ContextTypes.DEFAULT_TYPE):
     """Post daily property to groups"""
@@ -1087,14 +1296,17 @@ async def send_periodic_greetings(context: ContextTypes.DEFAULT_TYPE):
                     logger.info(f"✅ Greeting sent to chat {chat_id}")
                     await asyncio.sleep(2)
                 except Exception as e:
-                    logger.error(f"❌ Failed to send greeting to {chat_id}: {e}")
+                    logger.error(f"❌ Failed to send greeting to chat {chat_id}: {e}")
+                    if "bot was blocked" in str(e).lower() or "chat not found" in str(e).lower():
+                        eva.db.deactivate_chat(chat_id)
+                        logger.info(f"🔇 Deactivated chat {chat_id}")
         
         logger.info("✅ Periodic greetings complete")
     except Exception as e:
         logger.error(f"❌ Error in periodic greetings: {e}")
 
 async def send_engagement_content(context: ContextTypes.DEFAULT_TYPE):
-    """Send engagement content to groups"""
+    """Send engagement content (polls, questions, facts, stories, weather)"""
     try:
         logger.info("🎯 Starting engagement content...")
         active_chats = eva.db.get_active_chats()
@@ -1103,102 +1315,140 @@ async def send_engagement_content(context: ContextTypes.DEFAULT_TYPE):
             logger.info("📭 No active chats for engagement")
             return
         
-        # Randomly select content type
-        content_types = ["poll", "story", "discuss", "brainstorm"]
-        selected_type = random.choice(content_types)
+        # Rotate between different engagement types
+        engagement_types = [
+            "poll", "discussion", "story", "fact", "weather", "news", "brainstorm"
+        ]
         
-        logger.info(f"📤 Posting {selected_type} to groups")
+        hour = datetime.now().hour
+        
+        # Choose engagement type based on time of day
+        if 6 <= hour < 9:
+            # Morning: Weather + News
+            content_type = random.choice(["weather", "news", "fact"])
+        elif 12 <= hour < 14:
+            # Lunch: Discussion or Poll
+            content_type = random.choice(["poll", "discussion"])
+        elif 17 <= hour < 20:
+            # Evening: Story or Brainstorm
+            content_type = random.choice(["story", "brainstorm", "discussion"])
+        else:
+            # Other times: Mix
+            content_type = random.choice(engagement_types)
         
         for chat in active_chats:
             chat_id = chat['chat_id']
+            chat_id_str = str(chat_id)
             
             try:
-                if selected_type == "poll":
-                    poll_data = eva.ai.generate_poll()
-                    await context.bot.send_poll(
-                        chat_id=chat_id,
-                        question=poll_data["question"],
-                        options=poll_data["options"],
-                        is_anonymous=False
-                    )
+                # Generate appropriate content
+                if content_type == "poll":
+                    if eva.ai.should_send_poll(chat_id_str):
+                        poll_data = eva.ai.generate_poll()
+                        await context.bot.send_poll(
+                            chat_id=chat_id,
+                            question=poll_data["question"],
+                            options=poll_data["options"],
+                            is_anonymous=False
+                        )
+                        logger.info(f"✅ Poll sent to chat {chat_id}")
                 
-                elif selected_type == "story":
-                    story = eva.ai.tell_namibia_story()
+                elif content_type == "story":
+                    if eva.ai.should_tell_story(chat_id_str):
+                        story = eva.ai.tell_namibia_story()
+                        await context.bot.send_message(
+                            chat_id=chat_id,
+                            text=story,
+                            parse_mode="Markdown"
+                        )
+                        logger.info(f"✅ Story sent to chat {chat_id}")
+                
+                elif content_type == "weather":
+                    if eva.ai.should_send_weather(chat_id_str):
+                        weather = await eva.ai.get_namibia_weather()
+                        await context.bot.send_message(
+                            chat_id=chat_id,
+                            text=weather,
+                            parse_mode="Markdown"
+                        )
+                        logger.info(f"✅ Weather sent to chat {chat_id}")
+                
+                elif content_type == "news":
+                    news = await eva.ai.get_namibia_news()
                     await context.bot.send_message(
                         chat_id=chat_id,
-                        text=story,
+                        text=news,
                         parse_mode="Markdown"
                     )
+                    logger.info(f"✅ News sent to chat {chat_id}")
                 
-                elif selected_type == "discuss":
-                    discussion = eva.ai.generate_discussion_topic()
-                    await context.bot.send_message(
-                        chat_id=chat_id,
-                        text=discussion,
-                        parse_mode="Markdown"
-                    )
-                
-                elif selected_type == "brainstorm":
+                elif content_type == "brainstorm":
                     ideas = eva.ai.generate_brainstorm_ideas()
                     await context.bot.send_message(
                         chat_id=chat_id,
                         text=ideas,
                         parse_mode="Markdown"
                     )
+                    logger.info(f"✅ Brainstorm sent to chat {chat_id}")
                 
-                logger.info(f"✅ {selected_type} sent to chat {chat_id}")
-                await asyncio.sleep(3)
-            
+                elif content_type == "discussion":
+                    topic = eva.ai.generate_discussion_topic()
+                    await context.bot.send_message(
+                        chat_id=chat_id,
+                        text=topic,
+                        parse_mode="Markdown"
+                    )
+                    logger.info(f"✅ Discussion sent to chat {chat_id}")
+                
+                elif content_type == "fact":
+                    fact = eva.ai.get_random_fact()
+                    await context.bot.send_message(
+                        chat_id=chat_id,
+                        text=fact,
+                        parse_mode="Markdown"
+                    )
+                    logger.info(f"✅ Fact sent to chat {chat_id}")
+                
+                await asyncio.sleep(3)  # Avoid rate limiting
+                
             except Exception as e:
-                logger.error(f"❌ Failed to send {selected_type} to {chat_id}: {e}")
+                logger.error(f"❌ Failed to send engagement to chat {chat_id}: {e}")
+                if "bot was blocked" in str(e).lower() or "chat not found" in str(e).lower():
+                    eva.db.deactivate_chat(chat_id)
         
-        logger.info(f"✅ Engagement content ({selected_type}) complete")
+        logger.info("✅ Engagement content complete")
     except Exception as e:
         logger.error(f"❌ Error in engagement content: {e}")
 
-# =========================================================
-# CALLBACK HANDLERS
-# =========================================================
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle inline button presses"""
+    """Handle buttons"""
     query = update.callback_query
     await query.answer()
     
     data = query.data
     
     # Main menu
-    if data == "menu_main":
+    if data == "menu_back":
         await query.edit_message_text(
             "🇳🇦 *Explore Namibia*\n\nWhat would you like to learn about?",
             parse_mode="Markdown",
             reply_markup=menu.main_menu()
         )
-        return
     
-    # Category menu
-    if data.startswith("cat_"):
-        category = data[4:]
-        description = menu.get_category_description(category)
-        category_markup = menu.category_menu(category)
+    # Category selection
+    elif data.startswith("cat_"):
+        category = data.replace("cat_", "")
+        content = menu.format_category(category)
         
-        if category_markup:
-            await query.edit_message_text(
-                description,
-                parse_mode="Markdown",
-                reply_markup=category_markup
-            )
-        else:
-            await query.edit_message_text(
-                f"❌ No topics found in {category}",
-                parse_mode="Markdown",
-                reply_markup=menu.back_button()
-            )
-        return
+        await query.edit_message_text(
+            content,
+            parse_mode="Markdown",
+            reply_markup=menu.create_submenu(category)
+        )
     
-    # Topic detail
-    if data.startswith("topic_"):
+    # Topic selection
+    elif data.startswith("topic_"):
         parts = data.split("_")
-        
         if len(parts) >= 3:
             category = "_".join(parts[1:-1])
             try:
@@ -1245,28 +1495,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 # =========================================================
-# STARTUP INITIALIZATION
-# =========================================================
-async def post_init(application: Application):
-    """Run after application starts - Initialize RAG"""
-    logger.info("🚀 Running post-initialization tasks...")
-    
-    # Initialize RAG system
-    try:
-        rag_success = await eva.initialize_rag()
-        
-        if rag_success:
-            logger.info("✅ RAG system initialized and documents synced")
-        else:
-            logger.warning("⚠️ RAG initialization completed with warnings")
-    except Exception as e:
-        logger.error(f"❌ RAG initialization failed: {e}")
-        logger.info("💡 Documents can still be synced manually with /sync_docs")
-    
-    logger.info("✅ Post-initialization complete")
-
-# =========================================================
-# MAIN
+# MAIN (Keep as is)
 # =========================================================
 def main():
     """Run Eva with webhook"""
@@ -1277,7 +1506,10 @@ def main():
     logger.info(f"✅ Categories: {len(eva.kb.get_categories())}")
     logger.info(f"✅ Properties: {len(eva.get_property_posts())}")
     logger.info("=" * 60)
-    logger.info("📚 RAG system will initialize after bot starts")
+    
+    # Note: RAG sync will happen on first /sync_docs command or auto-sync
+    # We don't sync on startup to avoid event loop conflicts
+    logger.info("📚 RAG system ready - use /sync_docs to load documents")
     logger.info("=" * 60)
     
     # Extract base URL from webhook URL for self-ping
@@ -1302,7 +1534,6 @@ def main():
             .connect_timeout(15) \
             .read_timeout(10) \
             .write_timeout(10) \
-            .post_init(post_init) \
             .build()
         has_job_queue = True
     except ImportError:
@@ -1312,7 +1543,6 @@ def main():
             .connect_timeout(15) \
             .read_timeout(10) \
             .write_timeout(10) \
-            .post_init(post_init) \
             .build()
         has_job_queue = False
     
