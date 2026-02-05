@@ -1410,23 +1410,9 @@ def main():
     logger.info(f"✅ Properties: {len(eva.get_property_posts())}")
     logger.info("=" * 60)
     
-    # Initial RAG document sync
-    logger.info("📚 Syncing RAG documents...")
-    import asyncio
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        sync_success = loop.run_until_complete(eva.rag.sync_documents())
-        if sync_success:
-            stats = eva.rag.get_stats()
-            logger.info(f"✅ RAG ready: {stats['total_documents']} docs, {stats['total_chunks']} chunks")
-        else:
-            logger.warning("⚠️ RAG sync failed - will retry later")
-    except Exception as e:
-        logger.error(f"❌ RAG sync error: {e}")
-    finally:
-        loop.close()
-    
+    # Note: RAG sync will happen on first /sync_docs command or auto-sync
+    # We don't sync on startup to avoid event loop conflicts
+    logger.info("📚 RAG system ready - use /sync_docs to load documents")
     logger.info("=" * 60)
     
     # Extract base URL from webhook URL for self-ping
