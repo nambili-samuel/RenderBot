@@ -21,6 +21,7 @@ from health_server import run_health_server_background
 from smart_features import SmartFeatures
 from advanced_ai import AdvancedAI
 from conversational_intelligence import ConversationalIntelligence
+from document_rag import DocumentRAG
 
 # Configure logging
 logging.basicConfig(
@@ -66,6 +67,7 @@ class EvaGeisesBot:
         self.smart = SmartFeatures()
         self.ai = AdvancedAI()  # Advanced AI features
         self.ci = ConversationalIntelligence()  # Conversational intelligence
+        self.rag = DocumentRAG()  # RAG document system
         self.last_activity = {}
         self.welcomed_users = set()
         self.last_greeting = {}
@@ -74,6 +76,7 @@ class EvaGeisesBot:
         logger.info(f"🇳🇦 Eva Geises initialized with {len(self.kb.get_all_topics())} topics")
         logger.info("🤖 Advanced AI features loaded")
         logger.info("🧠 Conversational intelligence enabled")
+        logger.info("📚 RAG document system initialized")
     
     def get_greeting(self):
         """Get time-appropriate greeting"""
@@ -209,7 +212,7 @@ class EvaGeisesBot:
         return property
     
     def generate_response(self, message, response_type, user_id=None):
-        """Generate Eva's response - CONVERSATIONAL INTELLIGENCE"""
+        """Generate Eva's response - CONVERSATIONAL INTELLIGENCE + RAG"""
         
         # Use conversational intelligence if user_id provided
         if user_id and response_type == "search":
@@ -237,17 +240,41 @@ class EvaGeisesBot:
             
             clean_msg = clean_msg.strip()
             
+            # SEARCH RAG DOCUMENTS FIRST (higher priority)
+            rag_results = self.rag.search_documents(clean_msg, limit=3) if clean_msg else []
+            
             # Search knowledge base
-            results = self.kb.search(clean_msg, limit=5) if clean_msg else []
+            kb_results = self.kb.search(clean_msg, limit=5) if clean_msg else []
+            
+            # Combine results (RAG first, then KB)
+            all_results = []
+            
+            # Add RAG results
+            for rag_result in rag_results:
+                all_results.append({
+                    'topic': f"📄 {rag_result['filename']}",
+                    'content': rag_result['text'],
+                    'source': 'document',
+                    'score': rag_result['score']
+                })
+            
+            # Add KB results
+            for kb_result in kb_results:
+                all_results.append({
+                    'topic': kb_result['topic'],
+                    'content': kb_result['content'],
+                    'source': 'knowledge_base',
+                    'score': 50  # Default score for KB
+                })
             
             # Use conversational intelligence to generate response
             intelligent_response = self.ci.generate_intelligent_response(
-                message, user_id, results, response_type
+                message, user_id, all_results, response_type
             )
             
             return intelligent_response
         
-        # Fallback to standard responses
+        # Fallback to standard responses with RAG
         clean_msg = message.lower().strip()
         clean_msg = re.sub(r'[?!.,;:]+', ' ', clean_msg)
         clean_msg = re.sub(r'@[^\s]*', '', clean_msg)
@@ -266,33 +293,53 @@ class EvaGeisesBot:
         
         clean_msg = clean_msg.strip()
         
-        # Search knowledge base
+        # Search both RAG and KB
         if response_type == "search" and clean_msg:
-            results = self.kb.search(clean_msg, limit=5)
+            rag_results = self.rag.search_documents(clean_msg, limit=2)
+            kb_results = self.kb.search(clean_msg, limit=3)
             
-            if results:
-                best = results[0]
+            # Prefer RAG results if available
+            if rag_results:
+                best = rag_results[0]
                 
-                # Natural response
+                response = f"📄 *From: {best['filename']}*\n\n"
+                response += f"{best['text']}\n\n"
+                
+                # Show source
+                response += f"_Source: Document Library_\n\n"
+                
+                # Show related if available
+                if len(rag_results) > 1:
+                    response += "💡 *More in documents:* "
+                    response += ", ".join([r['filename'] for r in rag_results[1:]])
+                    response += "\n\n"
+                
+                response += "Use /documents to see all available docs! 📚"
+                return response
+            
+            # Fallback to KB results
+            elif kb_results:
+                best = kb_results[0]
+                
                 response = f"*{best['topic']}*\n\n"
                 response += f"{best['content']}\n\n"
                 
-                # Show related topics if available (max 2)
-                if len(results) > 1:
+                if len(kb_results) > 1:
                     response += "💡 *Related:* "
-                    response += ", ".join([r['topic'] for r in results[1:3]])
+                    response += ", ".join([r['topic'] for r in kb_results[1:3]])
                     response += "\n\n"
                 
                 response += "Need more? Use /menu! 🇳🇦"
                 return response
+            
             else:
-                # Better fallback
+                # No results
                 return (
                     "🤔 I don't have specific info on that.\n\n"
                     "Try:\n"
+                    "• /documents - Browse document library\n"
                     "• /menu - Browse topics\n"
-                    "• Ask about Etosha, Sossusvlei, or Wildlife\n"
-                    "• /properties - Real estate"
+                    "• Ask about Etosha, Sossusvlei, or Wildlife"
                 )
         
         elif response_type == "greeting":
@@ -614,6 +661,70 @@ async def fact_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Share a random fact"""
     fact = eva.ai.get_random_fact()
     await update.message.reply_text(fact, parse_mode="Markdown")
+
+async def documents_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """List available RAG documents"""
+    docs = eva.rag.list_documents()
+    
+    if not docs:
+        await update.message.reply_text(
+            "📚 *Document Library*\n\n"
+            "No documents available yet.\n\n"
+            "💡 Documents will be synced automatically from GitHub repository.",
+            parse_mode="Markdown"
+        )
+        return
+    
+    response = f"📚 *Document Library* ({len(docs)} documents)\n\n"
+    
+    for i, doc in enumerate(docs[:10], 1):
+        filename = doc['filename'].replace('.pdf', '').replace('.docx', '').replace('_', ' ')
+        response += f"{i}. 📄 {filename}\n"
+        response += f"   _{doc['word_count']} words_\n\n"
+    
+    if len(docs) > 10:
+        response += f"...and {len(docs) - 10} more documents\n\n"
+    
+    response += "💡 Just ask questions - I'll search through all documents automatically!"
+    
+    await update.message.reply_text(response, parse_mode="Markdown")
+
+async def sync_docs_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Sync documents from GitHub - Admin only"""
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("🔒 This command is only available to administrators.")
+        return
+    
+    await update.message.reply_text("📥 Syncing documents from GitHub...", parse_mode="Markdown")
+    
+    success = await eva.rag.sync_documents()
+    
+    if success:
+        stats = eva.rag.get_stats()
+        response = (
+            f"✅ *Documents Synced!*\n\n"
+            f"📚 Total documents: {stats['total_documents']}\n"
+            f"🔍 Searchable chunks: {stats['total_chunks']}\n"
+            f"⏰ Last sync: {stats['last_sync'][:19]}\n\n"
+            f"Documents are now searchable!"
+        )
+    else:
+        response = "❌ Document sync failed. Check logs for details."
+    
+    await update.message.reply_text(response, parse_mode="Markdown")
+
+async def rag_stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show RAG system statistics"""
+    stats = eva.rag.get_stats()
+    
+    response = f"📊 *RAG System Statistics*\n\n"
+    response += f"📚 Documents: {stats['total_documents']}\n"
+    response += f"🔍 Chunks: {stats['total_chunks']}\n"
+    response += f"⏰ Last sync: {stats['last_sync'][:19] if stats['last_sync'] != 'Never' else 'Never'}\n"
+    response += f"📁 Source: GitHub\n\n"
+    response += f"💡 Use /documents to see available files!"
+    
+    await update.message.reply_text(response, parse_mode="Markdown")
 
 async def test_automation_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Test all automation features - Admin only"""
@@ -1299,6 +1410,25 @@ def main():
     logger.info(f"✅ Properties: {len(eva.get_property_posts())}")
     logger.info("=" * 60)
     
+    # Initial RAG document sync
+    logger.info("📚 Syncing RAG documents...")
+    import asyncio
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        sync_success = loop.run_until_complete(eva.rag.sync_documents())
+        if sync_success:
+            stats = eva.rag.get_stats()
+            logger.info(f"✅ RAG ready: {stats['total_documents']} docs, {stats['total_chunks']} chunks")
+        else:
+            logger.warning("⚠️ RAG sync failed - will retry later")
+    except Exception as e:
+        logger.error(f"❌ RAG sync error: {e}")
+    finally:
+        loop.close()
+    
+    logger.info("=" * 60)
+    
     # Extract base URL from webhook URL for self-ping
     service_url = WEBHOOK_URL.replace('/webhook', '') if WEBHOOK_URL else None
     
@@ -1350,6 +1480,12 @@ def main():
     app.add_handler(CommandHandler('poll', poll_command))
     app.add_handler(CommandHandler('discuss', discuss_command))
     app.add_handler(CommandHandler('fact', fact_command))
+    
+    # RAG Document Commands
+    app.add_handler(CommandHandler('documents', documents_command))
+    app.add_handler(CommandHandler('docs', documents_command))  # Alias
+    app.add_handler(CommandHandler('sync_docs', sync_docs_command))
+    app.add_handler(CommandHandler('rag_stats', rag_stats_command))
     
     # Admin Testing & Control Commands
     app.add_handler(CommandHandler('test_automation', test_automation_command))
