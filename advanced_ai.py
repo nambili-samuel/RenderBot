@@ -141,13 +141,13 @@ The term "San" is a Khoekhoe term, but themselves they prefer to be identified a
 
 What's your favorite Namibia story? Share with us!""",
 
-            """📖 *The Desert Elephants' Journey*
+            """📖 *The Etosha National Park Tour*
 
-In the Kunene region, elephants learned something extraordinary—how to survive in the desert.
+Etosha National Park is a national park near the town of Tsumeb in Namibia and one of the largest national parks in Africa.
 
-These magnificent creatures trek over 70km daily, remembering every waterhole, every hidden spring. Mothers teach their calves the ancient routes, passing down knowledge through generations.
+The salt pans are the most noticeable geological features in the national park. This park is a great opportunity to view a diverse range of animal and birds that Africa is known for, including the Big 5: Lion, Leopard, Rhinoceros (black and white), Elephant and Buffalo.
 
-They've adapted to dig for water, eat desert plants, and withstand extreme heat. Scientists call them "desert-adapted," but locals call them "survivors."
+No reservation costs, book your best lodges in Etosha at Mushara Lodge, Ongava Lodge, Mokuti Lodge, Halali Camp, and many others."
 
 🐘 *Nature finds a way, always.*
 
