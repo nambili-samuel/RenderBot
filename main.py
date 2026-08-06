@@ -448,7 +448,7 @@ class EvaGeisesBot:
             "• Desert adventures in Sossusvlei 🏜️\n"
             "• Coastal trips to Swakopmund 🏖️\n"
             "• Cultural experiences with the Himba 👥\n"
-            "• Real estate opportunities 🏠\n\n"
+            "• Real estate in Namibia 🏠\n\n"
             "💡 Try /menu for organized topics or ask something else!"
         )
 
